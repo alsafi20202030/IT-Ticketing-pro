@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
 import { calculateSlaStatus, DEFAULT_SLA_HOURS } from "@/lib/sla";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   const auth = await requireAuth(["Admin", "IT"]);
   if (auth.error || !auth.user) {
