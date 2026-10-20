@@ -1,0 +1,158 @@
+// Prisma Schema for IT Desk
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite" // Can be switched to "postgresql" for Vercel/Supabase/Neon deployment
+  url      = env("DATABASE_URL")
+}
+
+model Department {
+  id              Int              @id @default(autoincrement())
+  name            String           @unique
+  users           HelpdeskUser[]
+  assignmentRules AssignmentRule[]
+}
+
+model HelpdeskUser {
+  id                   Int                 @id @default(autoincrement())
+  fullName             String
+  titlePrefix          String              @default("")
+  email                String              @unique
+  userName             String?
+  phoneNumber          String?
+  jobTitle             String?
+  departmentId         Int?
+  department           Department?         @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  role                 String              @default("User") // Admin, IT, User
+  passwordHash         String
+  mustChangePassword   Boolean             @default(true)
+  isActive             Boolean             @default(true)
+  isApproved           Boolean             @default(true)
+  isOnLeave            Boolean             @default(false)
+  backupAssigneeId     Int?
+  lastLoginAt          DateTime?
+  failedLoginAttempts  Int                 @default(0)
+  lockedUntilUtc       DateTime?
+  canViewAllTickets    Boolean             @default(false)
+  canEditAnyTicket     Boolean             @default(false)
+  canReassignTickets   Boolean             @default(false)
+  createdAt            DateTime            @default(now())
+
+  // Relationships
+  requestedTickets     Ticket[]            @relation("RequesterTickets")
+  assignedTickets      Ticket[]            @relation("AssignedTickets")
+  comments             TicketComment[]
+  histories            TicketHistory[]
+  delayReasons         TicketDelayReason[]
+  notifications        UserNotification[]
+  defaultRules         AssignmentRule[]
+  cannedReplies        CannedReply[]
+}
+
+model Category {
+  id      Int      @id @default(autoincrement())
+  name    String   @unique
+  tickets Ticket[]
+}
+
+model Ticket {
+  id                Int                 @id @default(autoincrement())
+  title             String
+  description       String
+  status            String              @default("New") // New, InProgress, OnHold, Resolved, Closed
+  priority          String              @default("Medium") // Low, Medium, High, Urgent
+  categoryId        Int
+  category          Category            @relation(fields: [categoryId], references: [id])
+  requesterId       Int
+  requester         HelpdeskUser        @relation("RequesterTickets", fields: [requesterId], references: [id])
+  assignedToId      Int?
+  assignedTo        HelpdeskUser?       @relation("AssignedTickets", fields: [assignedToId], references: [id])
+  attachmentPath    String?
+  rating            Int?
+  ratingComment     String?
+  resolvedAt        DateTime?
+  heldDurationMs    Int                 @default(0)
+  holdStartedAt     DateTime?
+  slaWarningSent    Boolean             @default(false)
+  slaOverdueSent    Boolean             @default(false)
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  comments          TicketComment[]
+  history           TicketHistory[]
+  delayReasons      TicketDelayReason[]
+}
+
+model TicketComment {
+  id             Int          @id @default(autoincrement())
+  ticketId       Int
+  ticket         Ticket       @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  userId         Int
+  user           HelpdeskUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  text           String
+  isInternal     Boolean      @default(false)
+  attachmentPath String?
+  createdAt      DateTime     @default(now())
+}
+
+model TicketHistory {
+  id        Int          @id @default(autoincrement())
+  ticketId  Int
+  ticket    Ticket       @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  action    String
+  byUserId  Int
+  byUser    HelpdeskUser @relation(fields: [byUserId], references: [id], onDelete: Cascade)
+  at        DateTime     @default(now())
+}
+
+model TicketDelayReason {
+  id        Int          @id @default(autoincrement())
+  ticketId  Int
+  ticket    Ticket       @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  userId    Int
+  user      HelpdeskUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reason    String
+  createdAt DateTime     @default(now())
+}
+
+model AssignmentRule {
+  id                Int          @id @default(autoincrement())
+  departmentId      Int          @unique
+  department        Department   @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  defaultAssigneeId Int
+  defaultAssignee   HelpdeskUser @relation(fields: [defaultAssigneeId], references: [id], onDelete: Cascade)
+}
+
+model UserNotification {
+  id        Int          @id @default(autoincrement())
+  userId    Int
+  user      HelpdeskUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ticketId  Int?
+  text      String
+  isRead    Boolean      @default(false)
+  createdAt DateTime     @default(now())
+}
+
+model SystemSetting {
+  id    Int    @id @default(autoincrement())
+  key   String @unique
+  value String
+}
+
+model ActivityEntry {
+  id       Int      @id @default(autoincrement())
+  userId   Int?
+  userName String?
+  action   String
+  at       DateTime @default(now())
+}
+
+model CannedReply {
+  id          Int          @id @default(autoincrement())
+  title       String
+  text        String
+  createdById Int
+  createdBy   HelpdeskUser @relation(fields: [createdById], references: [id], onDelete: Cascade)
+}
