@@ -113,8 +113,16 @@ export async function POST(req: Request) {
     });
 
     return res;
-  } catch (error) {
+  } catch (error: any) {
     console.error("Login error:", error);
-    return NextResponse.json({ message: "حدث خطأ غير متوقع في الخادم" }, { status: 500 });
+    let msg = "حدث خطأ غير متوقع في الخادم";
+    if (error?.code === "P1001" || error?.message?.includes("Can't reach database server")) {
+      msg = "تعذر الاتصال بقاعدة البيانات في Supabase. يرجى استخدام رابط Pooler (المنفذ 6543) بدلاً من الاتصال المباشر.";
+    } else if (error?.message?.includes("relation") && error?.message?.includes("does not exist")) {
+      msg = "جداول النظام غير موجودة في قاعدة البيانات. يرجى تطبيق ملف supabase-schema.sql في SQL Editor في Supabase.";
+    } else if (error?.code?.startsWith("P")) {
+      msg = `خطأ في قاعدة البيانات (${error.code}): يرجى مراجعة صفحة التشخيص /api/health`;
+    }
+    return NextResponse.json({ message: msg, errorDetails: error?.message }, { status: 500 });
   }
 }

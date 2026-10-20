@@ -92,8 +92,14 @@ export async function POST(req: Request) {
       pendingApproval: false,
       message: "تم إنشاء الحساب بنجاح! يمكنك الآن تسجيل الدخول.",
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Registration error:", error);
-    return NextResponse.json({ message: "حدث خطأ أثناء إنشاء الحساب" }, { status: 500 });
+    let msg = "حدث خطأ أثناء إنشاء الحساب";
+    if (error?.code === "P1001" || error?.message?.includes("Can't reach database server")) {
+      msg = "تعذر الاتصال بقاعدة البيانات في Supabase. يرجى استخدام رابط Pooler (المنفذ 6543) بدلاً من الاتصال المباشر.";
+    } else if (error?.message?.includes("relation") && error?.message?.includes("does not exist")) {
+      msg = "جداول النظام غير موجودة في قاعدة البيانات. يرجى تطبيق ملف supabase-schema.sql في SQL Editor في Supabase.";
+    }
+    return NextResponse.json({ message: msg, errorDetails: error?.message }, { status: 500 });
   }
 }
