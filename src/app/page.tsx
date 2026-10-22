@@ -8,6 +8,7 @@ import { Topbar } from "@/components/layout/topbar";
 import { OverviewView } from "@/components/dashboard/overview-view";
 import { TicketsListView } from "@/components/tickets/tickets-list-view";
 import { TeamWorkloadView } from "@/components/team/team-workload-view";
+import { EmployeeTasksView } from "@/components/tasks/employee-tasks-view";
 import { UsersView } from "@/components/admin/users-view";
 import { DepartmentsView } from "@/components/admin/departments-view";
 import { RulesView } from "@/components/admin/rules-view";
@@ -73,6 +74,7 @@ export default function MainPage() {
     overview: "نظرة عامة ومؤشرات الأداء",
     tickets: "بوابة طلبات وتذاكر الدعم",
     team: "فريق الدعم الفني وأعباء العمل",
+    tasks: "مهام موظفي قسم IT",
     users: "إدارة المستخدمين والصلاحيات",
     departments: "إدارة الأقسام والوحدات",
     rules: "قواعد الإسناد التلقائي",
@@ -120,6 +122,10 @@ export default function MainPage() {
           )}
 
           {currentTab === "team" && isItOrAdmin && <TeamWorkloadView />}
+
+          {currentTab === "tasks" && isItOrAdmin && (
+            <EmployeeTasksView currentUser={user} staff={bootData.staff || []} />
+          )}
 
           {currentTab === "users" && user.role === "Admin" && (
             <UsersView departments={bootData.departments || []} />

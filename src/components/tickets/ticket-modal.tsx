@@ -45,9 +45,10 @@ export function TicketModal({
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<"comments" | "history">("comments");
   const [newComment, setNewComment] = useState("");
+  const [newMessage, setNewMessage] = useState("");
   const [isInternal, setIsInternal] = useState(false);
-  const [showHoldReasonPrompt, setShowHoldReasonPrompt] = useState(false);
-  const [delayReason, setDelayReason] = useState("");
+  const [showMessageToEmployeePrompt, setShowMessageToEmployeePrompt] = useState(false);
+  const [messageToEmployee, setMessageToEmployee] = useState("");
 
   const isItOrAdmin = currentUser.role === "IT" || currentUser.role === "Admin";
 
@@ -82,8 +83,8 @@ export function TicketModal({
       queryClient.invalidateQueries({ queryKey: ["ticket", ticketId] });
       queryClient.invalidateQueries({ queryKey: ["tickets"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-      setShowHoldReasonPrompt(false);
-      setDelayReason("");
+      setShowMessageToEmployeePrompt(false);
+      setMessageToEmployee("");
     },
   });
 
@@ -108,19 +109,61 @@ export function TicketModal({
     },
   });
 
+  // Messages query (TicketMessage - two-way conversation)
+  const messagesQuery = useQuery({
+    queryKey: ["ticket_messages", ticketId],
+    queryFn: async () => {
+      if (!ticketId) return [];
+      const res = await fetch(`/api/tickets/${ticketId}/messages`);
+      if (!res.ok) throw new Error("تعذر جلب الرسائل");
+      const json = await res.json();
+      return json.messages || [];
+    },
+    enabled: !!ticketId,
+  });
+
+  // Mutation for posting messages
+  const messageMutation = useMutation({
+    mutationFn: async (text: string) => {
+      const res = await fetch(`/api/tickets/${ticketId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      if (!res.ok) throw new Error("تعذر إرسال الرسالة");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["ticket_messages", ticketId] });
+      queryClient.invalidateQueries({ queryKey: ["ticket", ticketId] });
+      setNewMessage("");
+    },
+  });
+
   if (!ticketId) return null;
 
   const handleStatusChange = (newStatus: string) => {
-    if (newStatus === "OnHold") {
-      setShowHoldReasonPrompt(true);
+    if (newStatus === "WaitingEmployee") {
+      setShowMessageToEmployeePrompt(true);
     } else {
       updateMutation.mutate({ status: newStatus });
     }
   };
 
-  const submitHoldWithReason = () => {
-    if (!delayReason.trim()) return;
-    updateMutation.mutate({ status: "OnHold", delayReason });
+  const submitMessageToEmployee = () => {
+    if (!messageToEmployee.trim()) return;
+    // Post a message to the employee first, then set status to WaitingEmployee
+    fetch(`/api/tickets/${ticketId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: messageToEmployee, isInternal: false }),
+    }).then(async (res) => {
+      if (!res.ok) throw new Error("تعذر إرسال الرسالة للموظف");
+      await updateMutation.mutateAsync({ status: "WaitingEmployee" });
+      queryClient.invalidateQueries({ queryKey: ["ticket_messages", ticketId] });
+      setShowMessageToEmployeePrompt(false);
+      setMessageToEmployee("");
+    });
   };
 
   const sla = ticket ? calculateSlaStatus(ticket, slaHours) : null;
@@ -128,7 +171,7 @@ export function TicketModal({
   const statusMap: Record<string, { label: string; bg: string; text: string }> = {
     New: { label: "جديدة", bg: "bg-blue-50 dark:bg-blue-950/40", text: "text-blue-700 dark:text-blue-400" },
     InProgress: { label: "قيد المعالجة", bg: "bg-amber-50 dark:bg-amber-950/40", text: "text-amber-700 dark:text-amber-400" },
-    OnHold: { label: "معلقة", bg: "bg-purple-50 dark:bg-purple-950/40", text: "text-purple-700 dark:text-purple-400" },
+    WaitingEmployee: { label: "بانتظار الموظف", bg: "bg-indigo-50 dark:bg-indigo-950/40", text: "text-indigo-700 dark:text-indigo-400" },
     Resolved: { label: "تم الحل", bg: "bg-emerald-50 dark:bg-emerald-950/40", text: "text-emerald-700 dark:text-emerald-400" },
     Closed: { label: "مغلقة", bg: "bg-slate-100 dark:bg-slate-800", text: "text-slate-600 dark:text-slate-400" },
   };
@@ -217,7 +260,7 @@ export function TicketModal({
                 >
                   <option value="New">جديدة (New)</option>
                   <option value="InProgress">قيد المعالجة (In Progress)</option>
-                  <option value="OnHold">معلقة (On Hold)</option>
+                  <option value="WaitingEmployee">بانتظار الموظف (Waiting Employee)</option>
                   <option value="Resolved">تم الحل (Resolved)</option>
                   <option value="Closed">مغلقة (Closed)</option>
                 </select>
@@ -249,35 +292,36 @@ export function TicketModal({
               </div>
             </div>
 
-            {/* Prompt for Hold Reason */}
-            {showHoldReasonPrompt && (
-              <div className="p-4 rounded-2xl bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800 space-y-3 animate-in fade-in">
-                <span className="block text-xs font-bold text-purple-900 dark:text-purple-300">
-                  سبب تعليق التذكرة (إلزامي لتوثيق فترة التوقف):
+            {/* Prompt for Message to Employee */}
+
+            {showMessageToEmployeePrompt && (
+              <div className="p-4 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 space-y-3 animate-in fade-in">
+                <span className="block text-xs font-bold text-indigo-900 dark:text-indigo-300">
+                  اكتب رسالة للموظف المسند إليه (تُرسل مع تغيير الحالة إلى "بانتظار الموظف"):
                 </span>
                 <input
                   type="text"
                   required
-                  placeholder="مثال: بانتظار وصول قطعة الغيار، بانتظار رد العميل..."
-                  value={delayReason}
-                  onChange={(e) => setDelayReason(e.target.value)}
-                  className="w-full text-xs p-2.5 rounded-xl border border-purple-200 dark:border-purple-700 bg-white dark:bg-slate-900"
+                  placeholder="مثال: يرجى مراجعة المرفقات وإرسال التحديث... غيّر حالة التذكرة إلى بانتظار الموظف عند الانتهاء"
+                  value={messageToEmployee}
+                  onChange={(e) => setMessageToEmployee(e.target.value)}
+                  className="w-full text-xs p-2.5 rounded-xl border border-indigo-200 dark:border-indigo-700 bg-white dark:bg-slate-900"
                 />
                 <div className="flex gap-2 justify-end">
                   <button
                     type="button"
-                    onClick={() => setShowHoldReasonPrompt(false)}
+                    onClick={() => setShowMessageToEmployeePrompt(false)}
                     className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg"
                   >
                     إلغاء
                   </button>
                   <button
                     type="button"
-                    onClick={submitHoldWithReason}
-                    disabled={!delayReason.trim()}
-                    className="px-3 py-1.5 text-xs bg-purple-700 hover:bg-purple-800 text-white rounded-lg font-medium"
+                    onClick={submitMessageToEmployee}
+                    disabled={!messageToEmployee.trim()}
+                    className="px-3 py-1.5 text-xs bg-indigo-700 hover:bg-indigo-800 text-white rounded-lg font-medium"
                   >
-                    تأكيد تعليق التذكرة
+                    إرسال وتغيير الحالة
                   </button>
                 </div>
               </div>
@@ -463,6 +507,70 @@ export function TicketModal({
                         className="bg-brand-800 hover:bg-brand-900 disabled:opacity-50 text-white px-4 py-2 rounded-xl text-xs font-medium flex items-center gap-1.5 transition"
                       >
                         {commentMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                        <span>إرسال</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Conversation (TicketMessage) */}
+                  <div className="mt-6 space-y-2 pt-4 border-t border-slate-100 dark:border-t border-slate-800">
+                    <h3 className="text-xs font-bold text-slate-700 dark:text-slate-300 mb-2 flex items-center gap-1.5">
+                      <MessageSquare className="w-3.5 h-3.5 text-indigo-500" /> محادثة التذكرة
+                    </h3>
+                    <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
+                      {messagesQuery.data?.length === 0 ? (
+                        <div className="text-center py-4 text-xs text-slate-400">لا توجد رسائل بعد</div>
+                      ) : (
+                        messagesQuery.data.map((m: any) => (
+                          <div
+                            key={m.id}
+                            className={`p-3 rounded-2xl text-xs ${
+                              m.isFromRequester
+                                ? "bg-blue-50 dark:bg-blue-900/30 border-b border-b-blue-200 dark:border-b-blue-900 ml-4"
+                                : "bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 mr-4"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1">
+                              <span className="font-semibold">{m.senderName || m.user?.fullName}</span>
+                              <span>
+                                {new Date(m.createdAt).toLocaleDateString("ar-SA", {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
+                              </span>
+                            </div>
+                            <p className="whitespace-pre-wrap">{m.body}</p>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                    <div className="flex gap-2 mt-2">
+                      <input
+                        type="text"
+                        value={newMessage}
+                        onChange={(e) => setNewMessage(e.target.value)}
+                        placeholder="اكتب رسالة للمحادثة..."
+                        className="flex-1 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                        onKeyDown={(e) => {
+                          if (
+                            e.key === "Enter" &&
+                            newMessage.trim() &&
+                            !messageMutation.isPending
+                          ) {
+                            messageMutation.mutate(newMessage);
+                          }
+                        }}
+                      />
+                      <button
+                        onClick={() => messageMutation.mutate(newMessage)}
+                        disabled={!newMessage.trim() || messageMutation.isPending}
+                        className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-4 py-2 rounded-xl text-xs font-medium flex items-center gap-1.5 transition"
+                      >
+                        {messageMutation.isPending ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Send className="w-3.5 h-3.5" />
+                        )}
                         <span>إرسال</span>
                       </button>
                     </div>

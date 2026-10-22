@@ -44,6 +44,38 @@ export function SettingsView() {
     setSettings((prev) => ({ ...prev, [key]: val }));
   };
 
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoUploading, setLogoUploading] = useState(false);
+
+  const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null;
+    setLogoFile(file);
+  };
+
+  const uploadLogo = async () => {
+    if (!logoFile) return;
+    setLogoUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("logo", logoFile);
+      const res = await fetch("/api/admin/settings/logo", {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "فشل رفع الشعار");
+      }
+      const json = await res.json();
+      setSettings((prev) => ({ ...prev, LogoPath: json.logoPath }));
+      setLogoFile(null);
+      setLogoUploading(false);
+    } catch (e: any) {
+      setLogoUploading(false);
+      alert(e.message || "حدث خطأ أثناء رفع الشعار");
+    }
+  };
+
   if (isLoading) {
     return <div className="p-8 text-center text-xs text-slate-400">جاري تحميل الإعدادات...</div>;
   }
@@ -93,6 +125,60 @@ export function SettingsView() {
               onChange={(e) => handleChange("Subtitle", e.target.value)}
               className="w-full text-xs p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
             />
+          </div>
+          {/* Portal Title */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">عنوان البوابة (Portal Title)</label>
+            <input
+              type="text"
+              value={settings["PortalTitle"] || ""}
+              onChange={(e) => handleChange("PortalTitle", e.target.value)}
+              className="w-full text-xs p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
+            />
+          </div>
+          {/* Primary Color */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">اللون الأساسي للهوية (Primary Color)</label>
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={settings["PrimaryColor"] || "#7a1f3d"}
+                onChange={(e) => handleChange("PrimaryColor", e.target.value)}
+                className="w-8 h-8 rounded-xl border-0 cursor-pointer bg-transparent"
+              />
+              <input
+                type="text"
+                value={settings["PrimaryColor"] || "#7a1f3d"}
+                onChange={(e) => handleChange("PrimaryColor", e.target.value)}
+                className="w-20 text-xs p-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
+              />
+            </div>
+          </div>
+          {/* Logo Upload */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">شعار النظام (Logo)</label>
+            <div className="flex items-center gap-3">
+              {settings["LogoPath"] && (
+                <img
+                  src={settings["LogoPath"]}
+                  alt="الشعار الحالي"
+                  className="w-12 h-12 rounded-lg border border-slate-200 dark:border-slate-700 object-contain"
+                />
+              )}
+              <input
+                type="file"
+                accept="image/png, image/jpeg, image/jpg, image/svg+xml, image/webp"
+                onChange={handleLogoChange}
+                className="w-full text-xs border border-slate-200 dark:border-slate-700 rounded-xl p-2.5 bg-slate-50 dark:bg-slate-800 cursor-pointer"
+              />
+            </div>
+            <button
+              onClick={uploadLogo}
+              disabled={!logoFile || logoUploading}
+              className="mt-2 text-xs bg-brand-800 hover:bg-brand-900 disabled:opacity-50 text-white px-3 py-1.5 rounded-lg"
+            >
+              {logoUploading ? "جاري الرفع..." : "رفع الشعار المحدد"}
+            </button>
           </div>
           <div>
             <label className="block text-xs font-semibold text-slate-600 mb-1">اسم الشركة / المنشأة</label>

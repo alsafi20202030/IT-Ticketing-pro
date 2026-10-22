@@ -57,6 +57,11 @@ export function Sidebar({
             label: "فريق الدعم والمهام",
             icon: Headphones,
           },
+          {
+            id: "tasks",
+            label: "مهام الموظفين",
+            icon: CheckCircle2,
+          },
         ]
       : []),
     ...(isAdmin

@@ -150,13 +150,13 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     updateData.status = status;
     const now = new Date();
 
-    if (ticket.status === "OnHold" && status !== "OnHold" && ticket.holdStartedAt) {
+    if (ticket.status === "WaitingEmployee" && status !== "WaitingEmployee" && ticket.holdStartedAt) {
       const duration = now.getTime() - new Date(ticket.holdStartedAt).getTime();
       updateData.heldDurationMs = (ticket.heldDurationMs || 0) + duration;
       updateData.holdStartedAt = null;
     }
 
-    if (status === "OnHold") {
+    if (status === "WaitingEmployee") {
       updateData.holdStartedAt = now;
       if (delayReason) {
         await prisma.ticketDelayReason.create({

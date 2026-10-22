@@ -61,11 +61,11 @@ export function OverviewView({ onSelectTicket }: OverviewViewProps) {
       bg: "bg-amber-50 dark:bg-amber-950/40",
     },
     {
-      title: "معلقة",
-      value: data?.onHold ?? 0,
-      icon: PauseCircle,
-      color: "text-purple-600 dark:text-purple-400",
-      bg: "bg-purple-50 dark:bg-purple-950/40",
+      title: "بانتظار الموظف",
+      value: data?.waitingEmployee ?? 0,
+      icon: Clock,
+      color: "text-indigo-600 dark:text-indigo-400",
+      bg: "bg-indigo-50 dark:bg-indigo-950/40",
     },
     {
       title: "تم الحل",

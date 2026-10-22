@@ -61,7 +61,7 @@ export function TicketsListView({
   const statusMap: Record<string, { label: string; bg: string; text: string }> = {
     New: { label: "جديدة", bg: "bg-blue-50 dark:bg-blue-950/40", text: "text-blue-700 dark:text-blue-400" },
     InProgress: { label: "قيد المعالجة", bg: "bg-amber-50 dark:bg-amber-950/40", text: "text-amber-700 dark:text-amber-400" },
-    OnHold: { label: "معلقة", bg: "bg-purple-50 dark:bg-purple-950/40", text: "text-purple-700 dark:text-purple-400" },
+    WaitingEmployee: { label: "بانتظار الموظف", bg: "bg-indigo-50 dark:bg-indigo-950/40", text: "text-indigo-700 dark:text-indigo-400" },
     Resolved: { label: "تم الحل", bg: "bg-emerald-50 dark:bg-emerald-950/40", text: "text-emerald-700 dark:text-emerald-400" },
     Closed: { label: "مغلقة", bg: "bg-slate-100 dark:bg-slate-800", text: "text-slate-600 dark:text-slate-400" },
   };
@@ -149,7 +149,7 @@ export function TicketsListView({
           <option value="all">كل الحالات</option>
           <option value="New">جديدة</option>
           <option value="InProgress">قيد المعالجة</option>
-          <option value="OnHold">معلقة</option>
+          <option value="WaitingEmployee">بانتظار الموظف</option>
           <option value="Resolved">تم الحل</option>
           <option value="Closed">مغلقة</option>
         </select>

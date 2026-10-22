@@ -42,7 +42,7 @@ export function calculateSlaStatus(ticket: {
   const totalElapsedMs = endTime.getTime() - new Date(ticket.createdAt).getTime();
 
   let heldMs = ticket.heldDurationMs || 0;
-  if (ticket.status === "OnHold" && ticket.holdStartedAt) {
+  if (ticket.status === "WaitingEmployee" && ticket.holdStartedAt) {
     heldMs += now.getTime() - new Date(ticket.holdStartedAt).getTime();
   }
 

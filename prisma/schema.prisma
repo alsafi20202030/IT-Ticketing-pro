@@ -1,11 +1,14 @@
-// Prisma Schema for IT Desk
+
+ // Prisma Schema for IT Desk
+
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model Department {
@@ -16,39 +19,71 @@ model Department {
 }
 
 model HelpdeskUser {
-  id                   Int                 @id @default(autoincrement())
-  fullName             String
-  titlePrefix          String              @default("")
-  email                String              @unique
-  userName             String?
-  phoneNumber          String?
-  jobTitle             String?
-  departmentId         Int?
-  department           Department?         @relation(fields: [departmentId], references: [id], onDelete: SetNull)
-  role                 String              @default("User") // Admin, IT, User
-  passwordHash         String
-  mustChangePassword   Boolean             @default(true)
-  isActive             Boolean             @default(true)
-  isApproved           Boolean             @default(true)
+  id                  Int                 @id @default(autoincrement())
+  fullName            String
+  titlePrefix         String              @default("")
+  email               String              @unique
+  userName            String?
+  phoneNumber         String?
+  jobTitle            String?
+  departmentId        Int?
+  department          Department?         @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  role                String              @default("User") // Admin, IT, User
+  passwordHash        String
+  mustChangePassword  Boolean             @default(true)
+  isActive            Boolean             @default(true)
+  isApproved          Boolean             @default(true)
   isOnLeave            Boolean             @default(false)
-  backupAssigneeId     Int?
-  lastLoginAt          DateTime?
-  failedLoginAttempts  Int                 @default(0)
-  lockedUntilUtc       DateTime?
-  canViewAllTickets    Boolean             @default(false)
-  canEditAnyTicket     Boolean             @default(false)
-  canReassignTickets   Boolean             @default(false)
-  createdAt            DateTime            @default(now())
+  backupAssigneeId    Int?
+  lastLoginAt         DateTime?
+  failedLoginAttempts Int                 @default(0)
+  lockedUntilUtc      DateTime?
+  canViewAllTickets   Boolean             @default(false)
+  canEditAnyTicket    Boolean             @default(false)
+  canReassignTickets  Boolean             @default(false)
+  createdAt           DateTime            @default(now())
 
   // Relationships
-  requestedTickets     Ticket[]            @relation("RequesterTickets")
-  assignedTickets      Ticket[]            @relation("AssignedTickets")
-  comments             TicketComment[]
-  histories            TicketHistory[]
-  delayReasons         TicketDelayReason[]
-  notifications        UserNotification[]
-  defaultRules         AssignmentRule[]
-  cannedReplies        CannedReply[]
+  requestedTickets Ticket[]            @relation("RequesterTickets")
+  assignedTickets  Ticket[]            @relation("AssignedTickets")
+  comments         TicketComment[]
+  histories        TicketHistory[]
+  delayReasons     TicketDelayReason[]
+  notifications    UserNotification[]
+  defaultRules     AssignmentRule[]
+  cannedReplies    CannedReply[]
+  messages         TicketMessage[]
+  employeeTasks    EmployeeTask[]
+}
+
+model TicketMessage {
+  id        Int          @id @default(autoincrement())
+  ticketId  Int
+  ticket    Ticket       @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  userId    Int
+  user      HelpdeskUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  body      String
+  senderName String
+  isFromRequester Boolean @default(false)
+  createdAt DateTime     @default(now())
+
+  @@index([ticketId, createdAt])
+}
+
+model EmployeeTask {
+  id          Int          @id @default(autoincrement())
+  userId      Int
+  user        HelpdeskUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  taskType    String       @default("Other") // Meeting, VendorFollowUp, RequestHandling, Maintenance, Other
+  status      String       @default("Pending") // Pending, Completed
+  workDate    DateTime     @default(now())
+  completedAt DateTime?
+  createdAt   DateTime     @default(now())
+
+  @@index([userId, workDate])
+  @@index([userId, status])
 }
 
 model Category {
@@ -58,31 +93,32 @@ model Category {
 }
 
 model Ticket {
-  id                Int                 @id @default(autoincrement())
-  title             String
-  description       String
-  status            String              @default("New") // New, InProgress, OnHold, Resolved, Closed
-  priority          String              @default("Medium") // Low, Medium, High, Urgent
-  categoryId        Int
-  category          Category            @relation(fields: [categoryId], references: [id])
-  requesterId       Int
-  requester         HelpdeskUser        @relation("RequesterTickets", fields: [requesterId], references: [id])
-  assignedToId      Int?
-  assignedTo        HelpdeskUser?       @relation("AssignedTickets", fields: [assignedToId], references: [id])
-  attachmentPath    String?
-  rating            Int?
-  ratingComment     String?
-  resolvedAt        DateTime?
-  heldDurationMs    Int                 @default(0)
-  holdStartedAt     DateTime?
-  slaWarningSent    Boolean             @default(false)
-  slaOverdueSent    Boolean             @default(false)
-  createdAt         DateTime            @default(now())
-  updatedAt         DateTime            @updatedAt
+  id             Int                 @id @default(autoincrement())
+  title          String
+  description    String
+  status         String              @default("New") // New, InProgress, WaitingEmployee, Resolved, Closed
+  priority       String              @default("Medium") // Low, Medium, High, Urgent
+  categoryId     Int
+  category       Category            @relation(fields: [categoryId], references: [id])
+  requesterId    Int
+  requester      HelpdeskUser        @relation("RequesterTickets", fields: [requesterId], references: [id])
+  assignedToId   Int?
+  assignedTo     HelpdeskUser?       @relation("AssignedTickets", fields: [assignedToId], references: [id])
+  attachmentPath String?
+  rating         Int?
+  ratingComment  String?
+  resolvedAt     DateTime?
+  heldDurationMs Int                 @default(0)
+  holdStartedAt  DateTime?
+  slaWarningSent Boolean             @default(false)
+  slaOverdueSent Boolean             @default(false)
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
 
-  comments          TicketComment[]
-  history           TicketHistory[]
-  delayReasons      TicketDelayReason[]
+  comments     TicketComment[]
+  history      TicketHistory[]
+  delayReasons TicketDelayReason[]
+  messages     TicketMessage[]
 }
 
 model TicketComment {
@@ -98,13 +134,13 @@ model TicketComment {
 }
 
 model TicketHistory {
-  id        Int          @id @default(autoincrement())
-  ticketId  Int
-  ticket    Ticket       @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  action    String
-  byUserId  Int
-  byUser    HelpdeskUser @relation(fields: [byUserId], references: [id], onDelete: Cascade)
-  at        DateTime     @default(now())
+  id       Int          @id @default(autoincrement())
+  ticketId Int
+  ticket   Ticket       @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  action   String
+  byUserId Int
+  byUser   HelpdeskUser @relation(fields: [byUserId], references: [id], onDelete: Cascade)
+  at       DateTime     @default(now())
 }
 
 model TicketDelayReason {
@@ -156,3 +192,4 @@ model CannedReply {
   createdById Int
   createdBy   HelpdeskUser @relation(fields: [createdById], references: [id], onDelete: Cascade)
 }
+
