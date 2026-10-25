@@ -13,6 +13,10 @@ import {
   LogOut,
   Headphones,
   CheckCircle2,
+  MessageCircle,
+  Calendar,
+  ArrowRight,
+  Shield,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -62,6 +66,21 @@ export function Sidebar({
             label: "مهام الموظفين",
             icon: CheckCircle2,
           },
+          {
+            id: "calendar",
+            label: "تقويم موظفي IT",
+            icon: Calendar,
+          },
+          {
+            id: "chat",
+            label: "المحادثات",
+            icon: MessageCircle,
+          },
+          {
+            id: "unassigned",
+            label: "استلام التذاكر العامة",
+            icon: ArrowRight,
+          },
         ]
       : []),
     ...(isAdmin
@@ -85,6 +104,11 @@ export function Sidebar({
             id: "settings",
             label: "إعدادات النظام",
             icon: Settings,
+          },
+          {
+            id: "staffRoles",
+            label: "مسميات موظفي IT",
+            icon: Shield,
           },
           {
             id: "activity",

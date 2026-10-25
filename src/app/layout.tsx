@@ -31,11 +31,23 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const brand = await prisma.systemSetting.findUnique({
-    where: { key: "PrimaryColor" },
-    select: { value: true },
-  });
-  const accent = (brand?.value || "#7a1f3d") as string;
+  const [primary, secondary, background] = await Promise.all([
+    prisma.systemSetting.findUnique({
+      where: { key: "PrimaryColor" },
+      select: { value: true },
+    }),
+    prisma.systemSetting.findUnique({
+      where: { key: "SecondaryColor" },
+      select: { value: true },
+    }),
+    prisma.systemSetting.findUnique({
+      where: { key: "BackgroundPath" },
+      select: { value: true },
+    }),
+  ]);
+  const accent = (primary?.value || "#7a1f3d") as string;
+  const second = (secondary?.value || "#c0846e") as string;
+  const bgPath = background?.value || null;
 
   return (
     <html lang="ar" dir="rtl" className={cairo.variable}>
@@ -57,19 +69,30 @@ export default async function RootLayout({
         <style
           dangerouslySetInnerHTML={{
             __html: `
-              :root { --brand-accent: ${accent}; }
+              :root { --brand-accent: ${accent}; --brand-secondary: ${second}; }
               .bg-brand-800 { background-color: ${accent} !important; }
               .text-brand-800 { color: ${accent} !important; }
               .border-brand-800 { border-color: ${accent} !important; }
+              .bg-brand-secondary { background-color: ${second} !important; }
+              .text-brand-secondary { color: ${second} !important; }
             `,
           }}
         />
       </head>
       <body
-        className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 antialiased font-cairo"
-        style={{ "--brand-accent": accent } as React.CSSProperties}
+        className="min-h-screen text-slate-900 dark:text-slate-100 antialiased font-cairo"
+        style={{
+          "--brand-accent": accent,
+          backgroundImage: bgPath ? `url("${bgPath}")` : "none",
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+          backgroundAttachment: "fixed",
+          backgroundRepeat: "no-repeat",
+        } as React.CSSProperties}
       >
-        <QueryProvider>{children}</QueryProvider>
+        <div className="relative min-h-screen bg-slate-50/75 dark:bg-slate-950/85 backdrop-blur-sm">
+          <QueryProvider>{children}</QueryProvider>
+        </div>
       </body>
     </html>
   );

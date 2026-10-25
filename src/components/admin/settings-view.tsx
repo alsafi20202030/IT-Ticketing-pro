@@ -76,6 +76,38 @@ export function SettingsView() {
     }
   };
 
+  const [backgroundFile, setBackgroundFile] = useState<File | null>(null);
+  const [backgroundUploading, setBackgroundUploading] = useState(false);
+
+  const handleBackgroundChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null;
+    setBackgroundFile(file);
+  };
+
+  const uploadBackground = async () => {
+    if (!backgroundFile) return;
+    setBackgroundUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("background", backgroundFile);
+      const res = await fetch("/api/admin/settings/background", {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "فشل رفع صورة الخلفية");
+      }
+      const json = await res.json();
+      setSettings((prev) => ({ ...prev, BackgroundPath: json.backgroundPath }));
+      setBackgroundFile(null);
+      setBackgroundUploading(false);
+    } catch (e: any) {
+      setBackgroundUploading(false);
+      alert(e.message || "حدث خطأ أثناء رفع الخلفية");
+    }
+  };
+
   if (isLoading) {
     return <div className="p-8 text-center text-xs text-slate-400">جاري تحميل الإعدادات...</div>;
   }
@@ -154,6 +186,24 @@ export function SettingsView() {
               />
             </div>
           </div>
+          {/* Secondary Color */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">اللون الثانوي للهوية (Secondary Color)</label>
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={settings["SecondaryColor"] || "#c0846e"}
+                onChange={(e) => handleChange("SecondaryColor", e.target.value)}
+                className="w-8 h-8 rounded-xl border-0 cursor-pointer bg-transparent"
+              />
+              <input
+                type="text"
+                value={settings["SecondaryColor"] || "#c0846e"}
+                onChange={(e) => handleChange("SecondaryColor", e.target.value)}
+                className="w-20 text-xs p-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
+              />
+            </div>
+          </div>
           {/* Logo Upload */}
           <div>
             <label className="block text-xs font-semibold text-slate-600 mb-1">شعار النظام (Logo)</label>
@@ -178,6 +228,32 @@ export function SettingsView() {
               className="mt-2 text-xs bg-brand-800 hover:bg-brand-900 disabled:opacity-50 text-white px-3 py-1.5 rounded-lg"
             >
               {logoUploading ? "جاري الرفع..." : "رفع الشعار المحدد"}
+            </button>
+          </div>
+          {/* Background Image Upload */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">صورة خلفية للنظام (Background Image)</label>
+            <div className="flex items-center gap-3">
+              {settings["BackgroundPath"] && (
+                <img
+                  src={settings["BackgroundPath"]}
+                  alt="الخلفية الحالية"
+                  className="w-12 h-12 rounded-lg border border-slate-200 dark:border-slate-700 object-cover object-center"
+                />
+              )}
+              <input
+                type="file"
+                accept="image/png, image/jpeg, image/jpg, image/webp"
+                onChange={handleBackgroundChange}
+                className="w-full text-xs border border-slate-200 dark:border-slate-700 rounded-xl p-2.5 bg-slate-50 dark:bg-slate-800 cursor-pointer"
+              />
+            </div>
+            <button
+              onClick={uploadBackground}
+              disabled={!backgroundFile || backgroundUploading}
+              className="mt-2 text-xs bg-brand-800 hover:bg-brand-900 disabled:opacity-50 text-white px-3 py-1.5 rounded-lg"
+            >
+              {backgroundUploading ? "جاري الرفع..." : "رفع الخلفية المحددة"}
             </button>
           </div>
           <div>

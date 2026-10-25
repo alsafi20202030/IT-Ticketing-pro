@@ -18,6 +18,16 @@ model Department {
   assignmentRules AssignmentRule[]
 }
 
+model StaffRole {
+  id          Int          @id @default(autoincrement())
+  name        String       @unique // مسمى وظيفي ك: أخصائي شبكات، مدير أنظمة، دعم تطبيقات
+  description String?
+  color       String       @default("#6366f1")
+  isActive    Boolean      @default(true)
+  users       HelpdeskUser[]
+  createdAt   DateTime     @default(now())
+}
+
 model HelpdeskUser {
   id                  Int                 @id @default(autoincrement())
   fullName            String
@@ -26,6 +36,8 @@ model HelpdeskUser {
   userName            String?
   phoneNumber         String?
   jobTitle            String?
+  staffRoleId         Int?
+  staffRole           StaffRole?          @relation(fields: [staffRoleId], references: [id], onDelete: SetNull)
   departmentId        Int?
   department          Department?         @relation(fields: [departmentId], references: [id], onDelete: SetNull)
   role                String              @default("User") // Admin, IT, User
@@ -54,6 +66,8 @@ model HelpdeskUser {
   cannedReplies    CannedReply[]
   messages         TicketMessage[]
   employeeTasks    EmployeeTask[]
+  conversationParticipants ConversationParticipant[]
+  sentChatMessages     ChatMessage[]      @relation("sender")
 }
 
 model TicketMessage {
@@ -119,6 +133,7 @@ model Ticket {
   history      TicketHistory[]
   delayReasons TicketDelayReason[]
   messages     TicketMessage[]
+  conversations Conversation[]
 }
 
 model TicketComment {
@@ -191,5 +206,45 @@ model CannedReply {
   text        String
   createdById Int
   createdBy   HelpdeskUser @relation(fields: [createdById], references: [id], onDelete: Cascade)
+}
+
+// ---------- نظام المحادثات المتكامل ----------
+model Conversation {
+  id          Int                   @id @default(autoincrement())
+  ticketId    Int?
+  title       String
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+
+  ticket      Ticket?               @relation(fields: [ticketId], references: [id], onDelete: SetNull)
+  messages    ChatMessage[]
+  participants ConversationParticipant[]
+
+  @@index([ticketId])
+}
+
+model ConversationParticipant {
+  id            Int      @id @default(autoincrement())
+  conversationId Int
+  userId        Int
+  conversation  Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user          HelpdeskUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  joinedAt      DateTime   @default(now())
+  lastReadAt    DateTime?
+
+  @@unique([conversationId, userId])
+}
+
+model ChatMessage {
+  id          Int      @id @default(autoincrement())
+  conversationId Int
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId    Int
+  sender      HelpdeskUser @relation("sender", fields: [senderId], references: [id], onDelete: Cascade)
+  body        String
+  createdAt   DateTime @default(now())
+  isRead      Boolean  @default(false)
+
+  @@index([conversationId, createdAt])
 }
 

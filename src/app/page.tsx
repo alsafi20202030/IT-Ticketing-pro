@@ -14,6 +14,10 @@ import { DepartmentsView } from "@/components/admin/departments-view";
 import { RulesView } from "@/components/admin/rules-view";
 import { SettingsView } from "@/components/admin/settings-view";
 import { ActivityView } from "@/components/admin/activity-view";
+import { StaffRolesView } from "@/components/admin/staff-roles-view";
+import { ChatView } from "@/components/chat/chat-view";
+import { CalendarView } from "@/components/calendar/calendar-view";
+import { UnassignedTicketsView } from "@/components/tickets/unassigned-tickets-view";
 import { NewTicketModal } from "@/components/tickets/new-ticket-modal";
 import { TicketModal } from "@/components/tickets/ticket-modal";
 import { RateModal } from "@/components/tickets/rate-modal";
@@ -80,6 +84,10 @@ export default function MainPage() {
     rules: "قواعد الإسناد التلقائي",
     settings: "إعدادات النظام والهوية",
     activity: "سجل العمليات والتدقيق",
+    chat: "المحادثات",
+    calendar: "تقويم موظفي IT",
+    unassigned: "استلام التذاكر العامة",
+    staffRoles: "مسميات موظفي IT",
   };
 
   const pubSettings = bootData.publicSettings || {};
@@ -138,6 +146,20 @@ export default function MainPage() {
           {currentTab === "settings" && user.role === "Admin" && <SettingsView />}
 
           {currentTab === "activity" && user.role === "Admin" && <ActivityView />}
+
+          {currentTab === "chat" && isItOrAdmin && <ChatView currentUser={user} />}
+
+          {currentTab === "calendar" && isItOrAdmin && (
+            <CalendarView currentUser={user} staff={bootData.staff || []} />
+          )}
+
+          {currentTab === "unassigned" && isItOrAdmin && (
+            <UnassignedTicketsView currentUser={user} />
+          )}
+
+          {currentTab === "staffRoles" && user.role === "Admin" && (
+            <StaffRolesView />
+          )}
         </main>
       </div>
 

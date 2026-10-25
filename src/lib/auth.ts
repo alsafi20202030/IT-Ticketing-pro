@@ -34,7 +34,7 @@ export function verifyToken(token: string): TokenPayload | null {
 }
 
 export async function getSessionUser() {
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
   const token = cookieStore.get(AUTH_COOKIE)?.value;
   if (!token) return null;
 
