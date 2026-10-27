@@ -88,6 +88,8 @@ model EmployeeTask {
   id          Int          @id @default(autoincrement())
   userId      Int
   user        HelpdeskUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ticketId    Int?
+  ticket      Ticket?      @relation(fields: [ticketId], references: [id], onDelete: SetNull)
   title       String
   description String?
   taskType    String       @default("Other") // Meeting, VendorFollowUp, RequestHandling, Maintenance, Other
@@ -98,6 +100,20 @@ model EmployeeTask {
 
   @@index([userId, workDate])
   @@index([userId, status])
+  @@index([ticketId])
+}
+
+model SystemSettings {
+  id                  Int      @id @default(1)
+  loginTitle          String   @default("IT Desk")
+  loginSubtitle       String   @default("بوابة طلبات الدعم الفني")
+  loginPrimaryColor   String   @default("#7A1F3D")
+  loginBackgroundColor String  @default("#f8fafc")
+  loginCardColor      String   @default("#ffffff")
+  loginTextColor      String   @default("#1e293b")
+  loginFooterText     String   @default("بوابة الدعم الداخلي")
+  loginCompanyName    String   @default("الشركة")
+  updatedAt           DateTime @updatedAt
 }
 
 model Category {
@@ -134,6 +150,7 @@ model Ticket {
   delayReasons TicketDelayReason[]
   messages     TicketMessage[]
   conversations Conversation[]
+  employeeTasks EmployeeTask[]
 }
 
 model TicketComment {

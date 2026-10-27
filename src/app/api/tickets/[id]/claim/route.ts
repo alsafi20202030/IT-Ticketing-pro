@@ -73,6 +73,31 @@ export async function POST(
     },
   });
 
+  // إنشاء مهمة تلقائيًا في جدول المهام من بيانات التذكرة
+  try {
+    const existingTask = await prisma.employeeTask.findFirst({
+      where: { ticketId: ticket.id },
+    });
+    if (!existingTask) {
+      const ticketFull = await prisma.ticket.findUnique({
+        where: { id: ticket.id },
+        select: { title: true, description: true },
+      });
+      await prisma.employeeTask.create({
+        data: {
+          userId: user.id,
+          ticketId: ticket.id,
+          title: ticketFull?.title || ticket.title || `تذكرة #${ticket.id}`,
+          description: ticketFull?.description || null,
+          taskType: "RequestHandling",
+          status: "Pending",
+        },
+      });
+    }
+  } catch (e) {
+    console.error("Auto task creation failed:", e);
+  }
+
   // إشعار مقدم الطلب
   if (ticket.requesterId !== user.id) {
     await prisma.userNotification.create({

@@ -15,7 +15,8 @@ import { RulesView } from "@/components/admin/rules-view";
 import { SettingsView } from "@/components/admin/settings-view";
 import { ActivityView } from "@/components/admin/activity-view";
 import { StaffRolesView } from "@/components/admin/staff-roles-view";
-import { ChatView } from "@/components/chat/chat-view";
+import { LoginDesignView } from "@/components/admin/login-design-view";
+import { ChatView } from "@/components/chat/ChatView";
 import { CalendarView } from "@/components/calendar/calendar-view";
 import { UnassignedTicketsView } from "@/components/tickets/unassigned-tickets-view";
 import { NewTicketModal } from "@/components/tickets/new-ticket-modal";
@@ -88,6 +89,7 @@ export default function MainPage() {
     calendar: "تقويم موظفي IT",
     unassigned: "استلام التذاكر العامة",
     staffRoles: "مسميات موظفي IT",
+    loginDesign: "تصميم صفحة تسجيل الدخول",
   };
 
   const pubSettings = bootData.publicSettings || {};
@@ -160,6 +162,9 @@ export default function MainPage() {
           {currentTab === "staffRoles" && user.role === "Admin" && (
             <StaffRolesView />
           )}
+           {currentTab === "loginDesign" && user.role === "Admin" && (
+             <LoginDesignView />
+           )}
         </main>
       </div>
 

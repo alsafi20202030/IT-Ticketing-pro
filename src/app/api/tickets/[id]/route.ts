@@ -241,5 +241,30 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     });
   }
 
+  // تحويل التذكرة المقبولة/جاري العمل عليها إلى مهمة تلقائيًا
+  try {
+    const finalStatus = updatedTicket.status || status;
+    const finalAssignee = updatedTicket.assignedToId ?? ticket.assignedToId;
+    if (finalStatus === "InProgress" && finalAssignee) {
+      const existingTask = await prisma.employeeTask.findFirst({
+        where: { ticketId: ticket.id },
+      });
+      if (!existingTask) {
+        await prisma.employeeTask.create({
+          data: {
+            userId: finalAssignee,
+            ticketId: ticket.id,
+            title: ticket.title,
+            description: ticket.description,
+            taskType: "RequestHandling",
+            status: "Pending",
+          },
+        });
+      }
+    }
+  } catch (e) {
+    console.error("Auto task creation failed:", e);
+  }
+
   return NextResponse.json({ ticket: updatedTicket });
 }

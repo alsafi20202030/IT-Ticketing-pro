@@ -110,6 +110,11 @@ export function Sidebar({
             label: "مسميات موظفي IT",
             icon: Shield,
           },
+           {
+             id: "loginDesign",
+             label: "تصميم صفحة الدخول",
+             icon: Settings,
+           },
           {
             id: "activity",
             label: "سجل العمليات",

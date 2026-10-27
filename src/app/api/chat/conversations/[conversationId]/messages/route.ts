@@ -8,7 +8,7 @@ export async function GET(
   req: Request,
   { params }: { params: { conversationId: string } }
 ) {
-  const auth = await requireAuth();
+  const auth = await requireAuth(["IT", "Admin"]);
   if (auth.error || !auth.user) {
     return NextResponse.json({ message: auth.error }, { status: auth.status });
   }
@@ -72,7 +72,7 @@ export async function POST(
   req: Request,
   { params }: { params: { conversationId: string } }
 ) {
-  const auth = await requireAuth();
+  const auth = await requireAuth(["IT", "Admin"]);
   if (auth.error || !auth.user) {
     return NextResponse.json({ message: auth.error }, { status: auth.status });
   }

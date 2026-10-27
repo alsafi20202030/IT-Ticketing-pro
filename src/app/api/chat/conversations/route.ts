@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 // الأدمن يرى جميع المحادثات، موظف الـ IT يرى محادثات التذاكر المسندة إليه شخصياً,
 // والمستخدم العادي يرى محادثات تذاكره فقط.
 export async function GET(req: Request) {
-  const auth = await requireAuth();
+  const auth = await requireAuth(["IT", "Admin"]);
   if (auth.error || !auth.user) {
     return NextResponse.json({ message: auth.error }, { status: auth.status });
   }
@@ -61,7 +61,7 @@ export async function GET(req: Request) {
 // إنشاء محادثة جديدة
 // body: { title?, ticketId?, participantIds?: number[] }
 export async function POST(req: Request) {
-  const auth = await requireAuth();
+  const auth = await requireAuth(["IT", "Admin"]);
   if (auth.error || !auth.user) {
     return NextResponse.json({ message: auth.error }, { status: auth.status });
   }

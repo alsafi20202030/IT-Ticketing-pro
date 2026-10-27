@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   CheckCircle2,
   Plus,
   User,
   Clock,
   Loader2,
+  Download,
 } from "lucide-react";
 
 interface StaffMember {
@@ -81,6 +82,62 @@ export function EmployeeTasksView({ currentUser, staff }: EmployeeTasksViewProps
   useEffect(() => {
     fetchTasks();
   }, []);
+
+  const exportToPdf = async () => {
+    try {
+      const html2pdf = (await import("html2pdf.js")).default;
+      const rows = tasks
+        .map((t) => {
+          const assignee = staff.find((s) => s.id === t.userId);
+          const statusLabel = t.status === "Completed" ? "مكتملة" : "قيد الانتظار";
+          return `<tr>
+            <td style="padding:6px;border:1px solid #ddd;">${t.title}</td>
+            <td style="padding:6px;border:1px solid #ddd;">${t.description || ""}</td>
+            <td style="padding:6px;border:1px solid #ddd;">${assignee?.fullName || t.user?.fullName || ""}</td>
+            <td style="padding:6px;border:1px solid #ddd;">${statusLabel}</td>
+            <td style="padding:6px;border:1px solid #ddd;">${new Date(t.workDate).toLocaleDateString("ar-SA")}</td>
+          </tr>`;
+        })
+        .join("");
+
+      const html = `
+        <div dir="rtl" style="font-family: 'Cairo', 'Tahoma', sans-serif; padding:20px; color:#1e293b;">
+          <h2 style="text-align:center; color:#7A1F3D;">قائمة مهام الموظفين</h2>
+          <table style="width:100%; border-collapse:collapse; font-size:12px;">
+            <thead>
+              <tr style="background:#7A1F3D; color:#fff;">
+                <th style="padding:6px;border:1px solid #ddd;">العنوان</th>
+                <th style="padding:6px;border:1px solid #ddd;">الوصف</th>
+                <th style="padding:6px;border:1px solid #ddd;">الموظف</th>
+                <th style="padding:6px;border:1px solid #ddd;">الحالة</th>
+                <th style="padding:6px;border:1px solid #ddd;">التاريخ</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>`;
+
+      const container = document.createElement("div");
+      container.innerHTML = html;
+      document.body.appendChild(container);
+
+      await html2pdf()
+        .set({
+          margin: 10,
+          filename: "employee-tasks.pdf",
+          image: { type: "jpeg", quality: 0.98 },
+          html2canvas: { scale: 2, useCORS: true },
+          jsPDF: { unit: "mm", format: "a4", orientation: "landscape" },
+        })
+        .from(container)
+        .save();
+
+      document.body.removeChild(container);
+    } catch (e) {
+      console.error("PDF export failed:", e);
+      alert("فشل تصدير PDF");
+    }
+  };
 
   const createTask = async () => {
     if (!newTitle.trim()) return;
@@ -245,9 +302,18 @@ export function EmployeeTasksView({ currentUser, staff }: EmployeeTasksViewProps
       </div>
 
       <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
-        <h3 className="text-xs font-bold text-slate-800 dark:text-white mb-3 flex items-center gap-1.5">
-          <Clock className="w-4 h-4" /> قائمة المهام
-        </h3>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-xs font-bold text-slate-800 dark:text-white flex items-center gap-1.5">
+            <Clock className="w-4 h-4" /> قائمة المهام
+          </h3>
+          <button
+            onClick={exportToPdf}
+            className="flex items-center gap-1.5 bg-brand-800 hover:bg-brand-900 text-white text-xs font-semibold px-3 py-1.5 rounded-xl transition"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>تصدير إلى PDF</span>
+          </button>
+        </div>
         {tasks.length === 0 ? (
           <div className="text-center py-6 text-xs text-slate-400">لا توجد مهام بعد</div>
         ) : (
