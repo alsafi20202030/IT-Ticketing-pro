@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(
   req: Request,
-  { params }: { params: { conversationId: string } }
+  { params }: { params: Promise<{ conversationId: string }> }
 ) {
   const auth = await requireAuth(["IT", "Admin"]);
   if (auth.error || !auth.user) {
@@ -15,7 +15,8 @@ export async function GET(
 
   const user = auth.user;
   const isAdmin = user.role === "Admin";
-  const conversationId = parseInt(params.conversationId, 10);
+  const { conversationId: rawConversationId } = await params;
+  const conversationId = parseInt(rawConversationId, 10);
   if (isNaN(conversationId)) {
     return NextResponse.json({ message: "معرف المحادثة غير صالح" }, { status: 400 });
   }
@@ -70,7 +71,7 @@ export async function GET(
 // body: { text }
 export async function POST(
   req: Request,
-  { params }: { params: { conversationId: string } }
+  { params }: { params: Promise<{ conversationId: string }> }
 ) {
   const auth = await requireAuth(["IT", "Admin"]);
   if (auth.error || !auth.user) {
@@ -79,7 +80,8 @@ export async function POST(
 
   const user = auth.user;
   const isAdmin = user.role === "Admin";
-  const conversationId = parseInt(params.conversationId, 10);
+  const { conversationId: rawConversationId } = await params;
+  const conversationId = parseInt(rawConversationId, 10);
   if (isNaN(conversationId)) {
     return NextResponse.json({ message: "معرف المحادثة غير صالح" }, { status: 400 });
   }

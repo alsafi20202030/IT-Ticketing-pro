@@ -2,13 +2,14 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
 
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAuth();
   if (auth.error || !auth.user) {
     return NextResponse.json({ message: auth.error }, { status: auth.status });
   }
 
-  const ticketId = parseInt(params.id, 10);
+  const { id } = await params;
+  const ticketId = parseInt(id, 10);
   if (isNaN(ticketId)) {
     return NextResponse.json({ message: "معرف التذكرة غير صالح" }, { status: 400 });
   }

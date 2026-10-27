@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 // بمجرد الضغط يُسند التذكرة للموظف النقر وتختفي من القائمة العامة للآخرين.
 export async function POST(
   req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const auth = await requireAuth(["IT", "Admin"]);
   if (auth.error || !auth.user) {
@@ -16,7 +16,8 @@ export async function POST(
   }
 
   const user = auth.user;
-  const ticketId = parseInt(params.id, 10);
+  const { id } = await params;
+  const ticketId = parseInt(id, 10);
   if (isNaN(ticketId)) {
     return NextResponse.json({ message: "معرف التذكرة غير صالح" }, { status: 400 });
   }
