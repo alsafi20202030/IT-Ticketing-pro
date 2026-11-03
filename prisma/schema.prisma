@@ -79,6 +79,7 @@ model TicketMessage {
   body      String
   senderName String
   isFromRequester Boolean @default(false)
+  isStaffOnly Boolean @default(false)
   createdAt DateTime     @default(now())
 
   @@index([ticketId, createdAt])
@@ -261,6 +262,7 @@ model ChatMessage {
   body        String
   createdAt   DateTime @default(now())
   isRead      Boolean  @default(false)
+  isStaffOnly Boolean  @default(false)
 
   @@index([conversationId, createdAt])
 }

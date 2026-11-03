@@ -17,6 +17,7 @@ import {
   Calendar,
   ArrowRight,
   Shield,
+  Activity,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -75,6 +76,11 @@ export function Sidebar({
             id: "chat",
             label: "المحادثات",
             icon: MessageCircle,
+          },
+          {
+            id: "analytics",
+            label: "إحصائيات المهام",
+            icon: Activity,
           },
           {
             id: "unassigned",

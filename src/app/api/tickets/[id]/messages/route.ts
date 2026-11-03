@@ -17,8 +17,13 @@ export async function GET(
     return NextResponse.json({ message: "معرف التذكرة غير صالح" }, { status: 400 });
   }
 
+  const user = auth.user;
+  const isItOrAdmin = user.role === "IT" || user.role === "Admin";
+
   const messages = await prisma.ticketMessage.findMany({
-    where: { ticketId },
+    where: isItOrAdmin
+      ? { ticketId }
+      : { ticketId, isStaffOnly: false },
     orderBy: { createdAt: "asc" },
     include: {
       user: {
@@ -56,11 +61,14 @@ export async function POST(
   }
 
   const body = await req.json();
-  const { text } = body;
+  const { text, isStaffOnly } = body;
 
   if (!text || !text.trim()) {
     return NextResponse.json({ message: "نص الرسالة مطلوب" }, { status: 400 });
   }
+
+  const isItOrAdmin = user.role === "IT" || user.role === "Admin";
+  const effectiveStaffOnly = isItOrAdmin ? Boolean(isStaffOnly) : false;
 
   const message = await prisma.ticketMessage.create({
     data: {
@@ -69,6 +77,7 @@ export async function POST(
       body: text.trim(),
       senderName: user.fullName,
       isFromRequester: user.id === ticket.requesterId,
+      isStaffOnly: effectiveStaffOnly,
     },
     include: {
       user: {
@@ -81,22 +90,24 @@ export async function POST(
   await prisma.ticketHistory.create({
     data: {
       ticketId: ticket.id,
-      action: "إرسال رسالة في المحادثة",
+      action: effectiveStaffOnly ? "إرسال رسالة داخلية للموظفين" : "إرسال رسالة في المحادثة",
       byUserId: user.id,
     },
   });
 
-  // Notify counterparty
-  const isRequester = user.id === ticket.requesterId;
-  const notifyUserId = isRequester ? ticket.assignedToId : ticket.requesterId;
-  if (notifyUserId && notifyUserId !== user.id) {
-    await prisma.userNotification.create({
-      data: {
-        userId: notifyUserId,
-        ticketId: ticket.id,
-        text: `رسالة جديدة في التذكرة #${ticket.id} "${ticket.title}" من ${user.fullName}`,
-      },
-    });
+  // Notify counterparty (skip for staff-only internal messages)
+  if (!effectiveStaffOnly) {
+    const isRequester = user.id === ticket.requesterId;
+    const notifyUserId = isRequester ? ticket.assignedToId : ticket.requesterId;
+    if (notifyUserId && notifyUserId !== user.id) {
+      await prisma.userNotification.create({
+        data: {
+          userId: notifyUserId,
+          ticketId: ticket.id,
+          text: `رسالة جديدة في التذكرة #${ticket.id} "${ticket.title}" من ${user.fullName}`,
+        },
+      });
+    }
   }
 
   return NextResponse.json({ message }, { status: 201 });

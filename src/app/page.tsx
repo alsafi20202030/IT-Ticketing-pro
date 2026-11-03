@@ -17,6 +17,7 @@ import { ActivityView } from "@/components/admin/activity-view";
 import { StaffRolesView } from "@/components/admin/staff-roles-view";
 import { LoginDesignView } from "@/components/admin/login-design-view";
 import { ChatView } from "@/components/chat/ChatView";
+import { AnalyticsView } from "@/components/analytics/analytics-view";
 import { CalendarView } from "@/components/calendar/calendar-view";
 import { UnassignedTicketsView } from "@/components/tickets/unassigned-tickets-view";
 import { NewTicketModal } from "@/components/tickets/new-ticket-modal";
@@ -150,6 +151,8 @@ export default function MainPage() {
           {currentTab === "activity" && user.role === "Admin" && <ActivityView />}
 
           {currentTab === "chat" && isItOrAdmin && <ChatView currentUser={user} />}
+
+          {currentTab === "analytics" && isItOrAdmin && <AnalyticsView />}
 
           {currentTab === "calendar" && isItOrAdmin && (
             <CalendarView currentUser={user} staff={bootData.staff || []} />

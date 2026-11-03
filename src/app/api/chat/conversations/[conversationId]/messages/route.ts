@@ -45,8 +45,14 @@ export async function GET(
     }
   }
 
+  // تصفية الرسائل حسب صلاحية المستخدم: الرسائل للموظفين فقط لا تظهر لغير موظفي IT/Admin
+  const where: any = { conversationId };
+  if (!isAdmin && user.role !== "IT") {
+    where.isStaffOnly = false;
+  }
+
   const messages = await prisma.chatMessage.findMany({
-    where: { conversationId },
+    where,
     orderBy: { createdAt: "asc" },
     include: {
       sender: { select: { id: true, fullName: true, role: true, staffRole: { select: { id: true, name: true, color: true } } } },
@@ -111,16 +117,20 @@ export async function POST(
   }
 
   const body = await req.json();
-  const { text } = body;
+  const { text, isStaffOnly = false } = body;
   if (!text || !text.trim()) {
     return NextResponse.json({ message: "نص الرسالة مطلوب" }, { status: 400 });
   }
+
+  // فقط موظفو IT وأدمن يمكنهم إرسال رسائل للموظفين فقط
+  const effectiveIsStaffOnly = isStaffOnly && (isAdmin || user.role === "IT");
 
   const message = await prisma.chatMessage.create({
     data: {
       conversationId,
       senderId: user.id,
       body: text.trim(),
+      isStaffOnly: effectiveIsStaffOnly,
     },
     include: {
       sender: { select: { id: true, fullName: true, role: true, staffRole: { select: { id: true, name: true, color: true } } } },

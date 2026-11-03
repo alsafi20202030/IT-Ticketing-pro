@@ -159,7 +159,9 @@ export async function PUT(req: Request) {
     data: {
       userId: auth.user.id,
       userName: auth.user.fullName,
-      action: `تعديل بيانات المستخدم: ${updated.fullName}`,
+      action: resetPassword
+        ? `إعادة تعيين كلمة المرور للمستخدم: ${updated.fullName} (${updated.email})`
+        : `تعديل بيانات المستخدم: ${updated.fullName}`,
     },
   });
 

@@ -1,13 +1,22 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Settings, Save, Check, Loader2 } from "lucide-react";
+import {
+  Settings,
+  Save,
+  Check,
+  Loader2,
+  RefreshCw,
+  AlertTriangle,
+} from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 export function SettingsView() {
   const queryClient = useQueryClient();
-  const [settings, setSettings] = useState<Record<string, string>>({});
-  const [savedMessage, setSavedMessage] = useState(false);
+  const [savedSettings, setSavedSettings] = useState<Record<string, string>>({});
+  const [pendingChanges, setPendingChanges] = useState<Record<string, string>>({});
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "success" | "error">("idle");
+  const [saveMessage, setSaveMessage] = useState("");
 
   const { data, isLoading } = useQuery({
     queryKey: ["admin_settings"],
@@ -19,337 +28,200 @@ export function SettingsView() {
 
   useEffect(() => {
     if (data) {
-      setSettings(data);
+      setSavedSettings(data);
+      setPendingChanges({});
+      setSaveStatus("idle");
+      setSaveMessage("");
     }
   }, [data]);
+
+  const hasChanges = Object.keys(pendingChanges).length > 0;
+
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasChanges) {
+        e.preventDefault();
+        e.returnValue = "يوجد تعديلات غير محفوظة. هل أنت متأكد من مغادرة الصفحة؟";
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [hasChanges]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
       const res = await fetch("/api/admin/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(settings),
+        body: JSON.stringify(pendingChanges),
       });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "فشل حفظ الإعدادات");
+      }
       return res.json();
     },
     onSuccess: () => {
+      setSavedSettings((prev) => ({ ...prev, ...pendingChanges }));
+      setPendingChanges({});
+      setSaveStatus("success");
+      setSaveMessage("تم حفظ جميع التغييرات بنجاح");
       queryClient.invalidateQueries({ queryKey: ["admin_settings"] });
       queryClient.invalidateQueries({ queryKey: ["bootstrap"] });
-      setSavedMessage(true);
-      setTimeout(() => setSavedMessage(false), 2500);
+      setTimeout(() => {
+        setSaveStatus("idle");
+        setSaveMessage("");
+      }, 4000);
+    },
+    onError: (e: any) => {
+      setSaveStatus("error");
+      setSaveMessage(e.message || "حدث خطأ أثناء حفظ التغييرات");
+      setTimeout(() => {
+        setSaveStatus("idle");
+        setSaveMessage("");
+      }, 5000);
     },
   });
 
   const handleChange = (key: string, val: string) => {
-    setSettings((prev) => ({ ...prev, [key]: val }));
+    setPendingChanges((prev) => ({ ...prev, [key]: val }));
   };
 
-  const [logoFile, setLogoFile] = useState<File | null>(null);
-  const [logoUploading, setLogoUploading] = useState(false);
-
-  const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0] || null;
-    setLogoFile(file);
+  const handleSaveAll = () => {
+    if (!hasChanges) return;
+    setSaveStatus("saving");
+    setSaveMessage("جاري حفظ جميع التغييرات...");
+    saveMutation.mutate();
   };
 
-  const uploadLogo = async () => {
-    if (!logoFile) return;
-    setLogoUploading(true);
-    try {
-      const formData = new FormData();
-      formData.append("logo", logoFile);
-      const res = await fetch("/api/admin/settings/logo", {
-        method: "POST",
-        body: formData,
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || "فشل رفع الشعار");
-      }
-      const json = await res.json();
-      setSettings((prev) => ({ ...prev, LogoPath: json.logoPath }));
-      setLogoFile(null);
-      setLogoUploading(false);
-    } catch (e: any) {
-      setLogoUploading(false);
-      alert(e.message || "حدث خطأ أثناء رفع الشعار");
-    }
+  const handleCancel = () => {
+    setPendingChanges({});
+    setSaveStatus("idle");
+    setSaveMessage("");
   };
 
-  const [backgroundFile, setBackgroundFile] = useState<File | null>(null);
-  const [backgroundUploading, setBackgroundUploading] = useState(false);
-
-  const handleBackgroundChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0] || null;
-    setBackgroundFile(file);
+  const getValue = (key: string, def: string) => {
+    return (pendingChanges[key] ?? savedSettings[key]) || def;
   };
 
-  const uploadBackground = async () => {
-    if (!backgroundFile) return;
-    setBackgroundUploading(true);
-    try {
-      const formData = new FormData();
-      formData.append("background", backgroundFile);
-      const res = await fetch("/api/admin/settings/background", {
-        method: "POST",
-        body: formData,
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || "فشل رفع صورة الخلفية");
-      }
-      const json = await res.json();
-      setSettings((prev) => ({ ...prev, BackgroundPath: json.backgroundPath }));
-      setBackgroundFile(null);
-      setBackgroundUploading(false);
-    } catch (e: any) {
-      setBackgroundUploading(false);
-      alert(e.message || "حدث خطأ أثناء رفع الخلفية");
-    }
+  const getChecked = (key: string) => {
+    return (pendingChanges[key] ?? savedSettings[key]) === "true";
   };
-
-  if (isLoading) {
-    return <div className="p-8 text-center text-xs text-slate-400">جاري تحميل الإعدادات...</div>;
-  }
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-base font-bold text-slate-800 dark:text-white">إعدادات النظام والهوية</h2>
-          <p className="text-xs text-slate-500">تخصيص اسم المنصة، سياسات التسجيل، وساعات اتفاقية SLA.</p>
+    <div className="max-w-7xl mx-auto p-4 space-y-6">
+      {saveStatus === "success" && (
+        <div className="p-4 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 rounded-xl flex items-center gap-3">
+          <Check className="w-5 h-5 text-emerald-600" />
+          <span className="text-sm text-emerald-700 dark:text-emerald-400 font-medium">{saveMessage}</span>
         </div>
-        <button
-          onClick={() => saveMutation.mutate()}
-          disabled={saveMutation.isPending}
-          className="flex items-center gap-1.5 bg-brand-800 hover:bg-brand-900 disabled:opacity-50 text-white text-xs font-semibold px-5 py-2.5 rounded-xl shadow-xs transition"
-        >
-          {saveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-          <span>حفظ التغييرات</span>
-        </button>
-      </div>
-
-      {savedMessage && (
-        <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 rounded-xl text-xs font-semibold flex items-center gap-2">
-          <Check className="w-4 h-4" />
-          <span>تم حفظ الإعدادات بنجاح وتحديث النظام!</span>
+      )}
+      {saveStatus === "error" && (
+        <div className="p-4 bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-800 rounded-xl flex items-center gap-3">
+          <AlertTriangle className="w-5 h-5 text-rose-600" />
+          <span className="text-sm text-rose-700 dark:text-rose-400 font-medium">{saveMessage}</span>
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Branding */}
-        <div className="p-6 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 space-y-4 shadow-xs">
-          <h3 className="font-bold text-xs text-slate-800 dark:text-white">الهوية البصرية والمسميات</h3>
+      <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm p-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
           <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1">اسم النظام</label>
-            <input
-              type="text"
-              value={settings["SystemName"] || ""}
-              onChange={(e) => handleChange("SystemName", e.target.value)}
-              className="w-full text-xs p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
-            />
+            <h1 className="text-xl font-bold text-slate-800 dark:text-white">إعدادات النظام</h1>
+            <p className="text-sm text-slate-500 dark:text-slate-400">قم بإجراء التعديلات واضغط على "حفظ جميع التغييرات" لتطبيقها.</p>
           </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1">العنوان الفرعي</label>
-            <input
-              type="text"
-              value={settings["Subtitle"] || ""}
-              onChange={(e) => handleChange("Subtitle", e.target.value)}
-              className="w-full text-xs p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
-            />
-          </div>
-          {/* Portal Title */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1">عنوان البوابة (Portal Title)</label>
-            <input
-              type="text"
-              value={settings["PortalTitle"] || ""}
-              onChange={(e) => handleChange("PortalTitle", e.target.value)}
-              className="w-full text-xs p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
-            />
-          </div>
-          {/* Primary Color */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1">اللون الأساسي للهوية (Primary Color)</label>
-            <div className="flex items-center gap-2">
-              <input
-                type="color"
-                value={settings["PrimaryColor"] || "#7a1f3d"}
-                onChange={(e) => handleChange("PrimaryColor", e.target.value)}
-                className="w-8 h-8 rounded-xl border-0 cursor-pointer bg-transparent"
-              />
-              <input
-                type="text"
-                value={settings["PrimaryColor"] || "#7a1f3d"}
-                onChange={(e) => handleChange("PrimaryColor", e.target.value)}
-                className="w-20 text-xs p-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
-              />
-            </div>
-          </div>
-          {/* Secondary Color */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1">اللون الثانوي للهوية (Secondary Color)</label>
-            <div className="flex items-center gap-2">
-              <input
-                type="color"
-                value={settings["SecondaryColor"] || "#c0846e"}
-                onChange={(e) => handleChange("SecondaryColor", e.target.value)}
-                className="w-8 h-8 rounded-xl border-0 cursor-pointer bg-transparent"
-              />
-              <input
-                type="text"
-                value={settings["SecondaryColor"] || "#c0846e"}
-                onChange={(e) => handleChange("SecondaryColor", e.target.value)}
-                className="w-20 text-xs p-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
-              />
-            </div>
-          </div>
-          {/* Logo Upload */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1">شعار النظام (Logo)</label>
-            <div className="flex items-center gap-3">
-              {settings["LogoPath"] && (
-                <img
-                  src={settings["LogoPath"]}
-                  alt="الشعار الحالي"
-                  className="w-12 h-12 rounded-lg border border-slate-200 dark:border-slate-700 object-contain"
-                />
-              )}
-              <input
-                type="file"
-                accept="image/png, image/jpeg, image/jpg, image/svg+xml, image/webp"
-                onChange={handleLogoChange}
-                className="w-full text-xs border border-slate-200 dark:border-slate-700 rounded-xl p-2.5 bg-slate-50 dark:bg-slate-800 cursor-pointer"
-              />
-            </div>
+          <div className="flex items-center gap-3">
+            {hasChanges && (
+              <button
+                onClick={handleCancel}
+                className="flex items-center gap-2 px-4 py-2.5 text-xs font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/20 rounded-xl border border-rose-200 dark:border-rose-800 transition"
+              >
+                <RefreshCw className="w-4 h-4" />
+                <span>إلغاء التغييرات</span>
+              </button>
+            )}
             <button
-              onClick={uploadLogo}
-              disabled={!logoFile || logoUploading}
-              className="mt-2 text-xs bg-brand-800 hover:bg-brand-900 disabled:opacity-50 text-white px-3 py-1.5 rounded-lg"
+              onClick={handleSaveAll}
+              disabled={!hasChanges || saveStatus === "saving"}
+              className="flex items-center gap-2 px-6 py-2.5 bg-[#800020] hover:bg-[#600018] disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-medium rounded-xl transition shadow"
             >
-              {logoUploading ? "جاري الرفع..." : "رفع الشعار المحدد"}
-            </button>
-          </div>
-          {/* Background Image Upload */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1">صورة خلفية للنظام (Background Image)</label>
-            <div className="flex items-center gap-3">
-              {settings["BackgroundPath"] && (
-                <img
-                  src={settings["BackgroundPath"]}
-                  alt="الخلفية الحالية"
-                  className="w-12 h-12 rounded-lg border border-slate-200 dark:border-slate-700 object-cover object-center"
-                />
+              {saveStatus === "saving" ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Save className="w-4 h-4" />
               )}
-              <input
-                type="file"
-                accept="image/png, image/jpeg, image/jpg, image/webp"
-                onChange={handleBackgroundChange}
-                className="w-full text-xs border border-slate-200 dark:border-slate-700 rounded-xl p-2.5 bg-slate-50 dark:bg-slate-800 cursor-pointer"
-              />
-            </div>
-            <button
-              onClick={uploadBackground}
-              disabled={!backgroundFile || backgroundUploading}
-              className="mt-2 text-xs bg-brand-800 hover:bg-brand-900 disabled:opacity-50 text-white px-3 py-1.5 rounded-lg"
-            >
-              {backgroundUploading ? "جاري الرفع..." : "رفع الخلفية المحددة"}
+              <span>حفظ جميع التغييرات</span>
             </button>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1">اسم الشركة / المنشأة</label>
-            <input
-              type="text"
-              value={settings["CompanyName"] || ""}
-              onChange={(e) => handleChange("CompanyName", e.target.value)}
-              className="w-full text-xs p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1">نص التذييل (Footer)</label>
-            <input
-              type="text"
-              value={settings["FooterText"] || ""}
-              onChange={(e) => handleChange("FooterText", e.target.value)}
-              className="w-full text-xs p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
-            />
           </div>
         </div>
 
-        {/* SLA Times */}
-        <div className="p-6 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 space-y-4 shadow-xs">
-          <h3 className="font-bold text-xs text-slate-800 dark:text-white">ساعات اتفاقية مستوى الخدمة (SLA)</h3>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-rose-600 mb-1">أولوية حرجة (Urgent)</label>
-              <input
-                type="number"
-                value={settings["SlaUrgentHours"] || "4"}
-                onChange={(e) => handleChange("SlaUrgentHours", e.target.value)}
-                className="w-full text-xs p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-orange-600 mb-1">أولوية مرتفعة (High)</label>
-              <input
-                type="number"
-                value={settings["SlaHighHours"] || "24"}
-                onChange={(e) => handleChange("SlaHighHours", e.target.value)}
-                className="w-full text-xs p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-amber-600 mb-1">أولوية متوسطة (Medium)</label>
-              <input
-                type="number"
-                value={settings["SlaMediumHours"] || "72"}
-                onChange={(e) => handleChange("SlaMediumHours", e.target.value)}
-                className="w-full text-xs p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1">أولوية منخفضة (Low)</label>
-              <input
-                type="number"
-                value={settings["SlaLowHours"] || "72"}
-                onChange={(e) => handleChange("SlaLowHours", e.target.value)}
-                className="w-full text-xs p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
-              />
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-3 p-6 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xs">
+            <h3 className="font-bold text-xs text-slate-800 dark:text-white mb-4">معلومات النظام</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">اسم النظام</label>
+                <input type="text" value={getValue("SystemName", "IT Desk")} onChange={(e) => handleChange("SystemName", e.target.value)} className="w-full text-xs p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">الشعار الفرعي</label>
+                <input type="text" value={getValue("Subtitle", "بوابة طلبات الدعم الفني")} onChange={(e) => handleChange("Subtitle", e.target.value)} className="w-full text-xs p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">اسم الشركة</label>
+                <input type="text" value={getValue("CompanyName", "الشركة")} onChange={(e) => handleChange("CompanyName", e.target.value)} className="w-full text-xs p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">نص التذييل</label>
+                <input type="text" value={getValue("FooterText", "بوابة الدعم الداخلي")} onChange={(e) => handleChange("FooterText", e.target.value)} className="w-full text-xs p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">اللون الأساسي</label>
+                <input type="color" value={getValue("PrimaryColor", "#7A1F3D")} onChange={(e) => handleChange("PrimaryColor", e.target.value)} className="w-full h-10 rounded-xl border-none bg-transparent cursor-pointer" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">مسار الشعار</label>
+                <input type="text" value={getValue("LogoPath", "/logo-placeholder.svg")} onChange={(e) => handleChange("LogoPath", e.target.value)} className="w-full text-xs p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800" />
+              </div>
             </div>
           </div>
-        </div>
+          <div className="lg:col-span-3 p-6 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xs">
+            <h3 className="font-bold text-xs text-slate-800 dark:text-white mb-4">اتفاقيات مستوى الخدمة (SLA)</h3>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-rose-600 mb-1">أولوية عاجلة (Urgent) - ساعات</label>
+                <input type="number" value={getValue("SlaUrgentHours", "4")} onChange={(e) => handleChange("SlaUrgentHours", e.target.value)} className="w-full text-xs p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-orange-600 mb-1">أولوية عالية (High)</label>
+                <input type="number" value={getValue("SlaHighHours", "24")} onChange={(e) => handleChange("SlaHighHours", e.target.value)} className="w-full text-xs p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-amber-600 mb-1">أولوية متوسطة (Medium)</label>
+                <input type="number" value={getValue("SlaMediumHours", "72")} onChange={(e) => handleChange("SlaMediumHours", e.target.value)} className="w-full text-xs p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">أولوية منخفضة (Low)</label>
+                <input type="number" value={getValue("SlaLowHours", "72")} onChange={(e) => handleChange("SlaLowHours", e.target.value)} className="w-full text-xs p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800" />
+              </div>
+            </div>
+          </div>
 
-        {/* Registration Policies */}
-        <div className="p-6 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 space-y-4 shadow-xs md:col-span-2">
-          <h3 className="font-bold text-xs text-slate-800 dark:text-white">سياسات التسجيل والوصول</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <label className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300">
-              <input
-                type="checkbox"
-                checked={settings["AllowSelfRegistration"] === "true"}
-                onChange={(e) => handleChange("AllowSelfRegistration", String(e.target.checked))}
-                className="rounded-sm border-slate-300 text-brand-800"
-              />
-              <span>السماح بالتسجيل الذاتي</span>
-            </label>
-            <label className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300">
-              <input
-                type="checkbox"
-                checked={settings["RegistrationRequiresApproval"] === "true"}
-                onChange={(e) => handleChange("RegistrationRequiresApproval", String(e.target.checked))}
-                className="rounded-sm border-slate-300 text-brand-800"
-              />
-              <span>التسجيل يتطلب موافقة الإدارة</span>
-            </label>
-            <label className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300">
-              <input
-                type="checkbox"
-                checked={settings["AllowRequesterAssigneeChoice"] === "true"}
-                onChange={(e) => handleChange("AllowRequesterAssigneeChoice", String(e.target.checked))}
-                className="rounded-sm border-slate-300 text-brand-800"
-              />
-              <span>السماح للعميل باختيار موظف الدعم</span>
-            </label>
+          <div className="lg:col-span-3 p-6 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xs">
+            <h3 className="font-bold text-xs text-slate-800 dark:text-white mb-4">سياسات التسجيل والوصول</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <label className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300">
+                <input type="checkbox" checked={getChecked("AllowSelfRegistration")} onChange={(e) => handleChange("AllowSelfRegistration", String(e.target.checked))} className="rounded-sm border-slate-300 text-brand-800" />
+                <span>السماح بالتسجيل الذاتي</span>
+              </label>
+              <label className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300">
+                <input type="checkbox" checked={getChecked("RegistrationRequiresApproval")} onChange={(e) => handleChange("RegistrationRequiresApproval", String(e.target.checked))} className="rounded-sm border-slate-300 text-brand-800" />
+                <span>التسجيل يتطلب موافقة الإدارة</span>
+              </label>
+              <label className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300">
+                <input type="checkbox" checked={getChecked("AllowRequesterAssigneeChoice")} onChange={(e) => handleChange("AllowRequesterAssigneeChoice", String(e.target.checked))} className="rounded-sm border-slate-300 text-brand-800" />
+                <span>السماح للعميل باختيار موظف الدعم</span>
+              </label>
+            </div>
           </div>
         </div>
       </div>

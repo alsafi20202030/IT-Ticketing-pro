@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Users, Plus, Check, X, Shield, Lock, Trash2, Edit, Loader2 } from "lucide-react";
+import { Users, Plus, Check, X, Shield, Lock, Trash2, Edit, Loader2, KeyRound } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 interface UsersViewProps {

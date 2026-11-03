@@ -22,6 +22,7 @@ export async function generateMetadata() {
       "نظام داخلي موحد لإدارة ومتابعة طلبات الدعم الفني وتقنية المعلومات",
     icons: {
       icon: "/favicon.svg",
+      apple: "/apple-touch-icon.png",
     },
   };
 }
