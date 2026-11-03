@@ -73,7 +73,7 @@ export async function GET(req: Request) {
 
     const csvContent = [
       csvHeaders.join(","),
-      ...csvRows.map((row: any[]) => row.map((cell) => `"${String(cell).replace(/\"/g, '\\\\\\\\\\"')}"`).join(",")),
+      ...csvRows.map((row: any[]) => row.map((cell) => `"${String(cell).replace(/"/g, '\\\\"')}"`).join(",")),
     ].join("\n");
 
     return new NextResponse(csvContent, {
@@ -92,8 +92,6 @@ export async function GET(req: Request) {
 
       // Add headers
       worksheet.addRow(["العنوان", "النوع", "الحالة", "الموظف", "تاريخ الإنشاء", "تاريخ الإكمال"]);
-      worksheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
-      worksheet.getRow(1).fill = { fgColor: { argb: "FF2D3748" } };
 
       // Add task rows
       for (const t of tasks) {
@@ -129,7 +127,7 @@ export async function GET(req: Request) {
       console.error("Excel export error:", error);
       return NextResponse.json(
         { message: "فشل تصدير التقرير: " + (error.message || "خطأ غير معروف") },
-        { status: 500 }
+        { status: 500 },
       );
     }
   }

@@ -30,7 +30,6 @@ const BLOCKED_EXTENSIONS = [
   "cmd",
   "com",
   "vbs",
-  "ps1",
 ];
 
 function getExtension(filename: string): string {
@@ -82,6 +81,10 @@ export async function POST(req: Request) {
 
     // التأكد من وجود حاوية التخزين (آمنة: تُنشأ فقط إذا لم تكن موجودة)
     await ensureLogoBucket();
+
+    if (!supabaseAdmin) {
+      return NextResponse.json({ message: "Supabase not configured" }, { status: 500 });
+    }
 
     const buffer = Buffer.from(await file.arrayBuffer());
     const safeName = `logos/logo-${Date.now()}-${Math.random()

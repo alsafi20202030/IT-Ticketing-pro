@@ -58,6 +58,10 @@ export async function POST(req: Request) {
     const buffer = Buffer.from(await file.arrayBuffer());
     const safeName = `backgrounds/bg-${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
 
+    if (!supabaseAdmin) {
+      return NextResponse.json({ message: "Supabase not configured" }, { status: 500 });
+    }
+
     const { error: uploadError } = await supabaseAdmin.storage
       .from(LOGO_BUCKET)
       .upload(safeName, buffer, {
@@ -70,6 +74,10 @@ export async function POST(req: Request) {
         { message: `فشل رفع صورة الخلفية للتخزين: ${uploadError.message}` },
         { status: 500 }
       );
+    }
+
+    if (!supabaseAdmin) {
+      return NextResponse.json({ message: "Supabase not configured" }, { status: 500 });
     }
 
     const { data: publicUrl } = supabaseAdmin.storage
