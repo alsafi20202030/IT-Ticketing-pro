@@ -41,6 +41,13 @@ export async function GET(
         },
         orderBy: { createdAt: "asc" },
       },
+      messages: {
+        where: isItOrAdmin ? {} : { isStaffOnly: false },
+        include: {
+          user: { select: { id: true, fullName: true, role: true } },
+        },
+        orderBy: { createdAt: "asc" },
+      },
       history: {
         include: { byUser: { select: { id: true, fullName: true, titlePrefix: true } } },
         orderBy: { at: "desc" },

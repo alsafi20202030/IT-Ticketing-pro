@@ -372,10 +372,10 @@ export function TicketModal({
                 </div>
 
                 <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
-                  {ticket?.messages?.length === 0 ? (
+                  {(ticket?.messages || []).length === 0 ? (
                     <div className="text-center py-6 text-xs text-slate-400">لا توجد رسائل بعد</div>
                   ) : (
-                    ticket.messages.map((m: any) => {
+                    (ticket?.messages || []).map((m: any) => {
                       const isOwn = m.userId === currentUser.id;
                       const isStaffOnlyMsg = m.isStaffOnly;
                       const canViewStaffOnly = isItOrAdmin;
