@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   X,
   Clock,
@@ -11,9 +11,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   Lock,
-  MessageSquare,
   History,
-  Star,
   Loader2,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -43,15 +41,23 @@ export function TicketModal({
   onOpenRateModal,
 }: TicketModalProps) {
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<"comments" | "history">("comments");
-  const [newComment, setNewComment] = useState("");
-  const [newMessage, setNewMessage] = useState("");
-  const [isInternal, setIsInternal] = useState(false);
-  const [showMessageToEmployeePrompt, setShowMessageToEmployeePrompt] = useState(false);
-  const [messageToEmployee, setMessageToEmployee] = useState("");
-
   const isItOrAdmin = currentUser.role === "IT" || currentUser.role === "Admin";
 
+  const [activeTab, setActiveTab] = useState<"chat" | "history">("chat");
+  const [newMessage, setNewMessage] = useState("");
+  const [isStaffOnly, setIsStaffOnly] = useState(false);
+
+  const [edit, setEdit] = useState<{
+    title: string;
+    description: string;
+    categoryId: string;
+    status: string;
+    priority: string;
+    assignedToId: string;
+  } | null>(null);
+
+  const [saveError, setSaveError] = useState("");
+  const [saveSuccess, setSaveSuccess] = useState("");
   const { data, isLoading } = useQuery({
     queryKey: ["ticket", ticketId],
     queryFn: async () => {
@@ -65,106 +71,90 @@ export function TicketModal({
 
   const ticket = data?.ticket;
 
-  // Mutation for updating status, priority, or assignee
-  const updateMutation = useMutation({
-    mutationFn: async (payload: any) => {
-      const res = await fetch(`/api/tickets/${ticketId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+  useEffect(() => {
+    if (ticket && !edit) {
+      setEdit({
+        title: ticket.title,
+        description: ticket.description || "",
+        categoryId: String(ticket.categoryId),
+        status: ticket.status,
+        priority: ticket.priority,
+        assignedToId: ticket.assignedToId ? String(ticket.assignedToId) : "",
       });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || "حدث خطأ أثناء التحديث");
-      }
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["ticket", ticketId] });
-      queryClient.invalidateQueries({ queryKey: ["tickets"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-      setShowMessageToEmployeePrompt(false);
-      setMessageToEmployee("");
-    },
-  });
+      setSaveError("");
+      setSaveSuccess("");
+    }
+  }, [ticket, edit]);
 
-  // Mutation for posting comments
-  const commentMutation = useMutation({
-    mutationFn: async () => {
-      const res = await fetch(`/api/tickets/${ticketId}/comments`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text: newComment,
-          isInternal,
-        }),
-      });
-      if (!res.ok) throw new Error("تعذر إرسال التعليق");
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["ticket", ticketId] });
-      setNewComment("");
-      setIsInternal(false);
-    },
-  });
-
-  // Messages query (TicketMessage - two-way conversation)
-  const messagesQuery = useQuery({
-    queryKey: ["ticket_messages", ticketId],
-    queryFn: async () => {
-      if (!ticketId) return [];
-      const res = await fetch(`/api/tickets/${ticketId}/messages`);
-      if (!res.ok) throw new Error("تعذر جلب الرسائل");
-      const json = await res.json();
-      return json.messages || [];
-    },
-    enabled: !!ticketId,
-  });
-
-  // Mutation for posting messages
   const messageMutation = useMutation({
     mutationFn: async (text: string) => {
       const res = await fetch(`/api/tickets/${ticketId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text, isStaffOnly }),
       });
-      if (!res.ok) throw new Error("تعذر إرسال الرسالة");
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "تعذر إرسال الرسالة");
+      }
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["ticket_messages", ticketId] });
       queryClient.invalidateQueries({ queryKey: ["ticket", ticketId] });
       setNewMessage("");
+      setIsStaffOnly(false);
+    },
+  });
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      if (!ticketId) return;
+      const payload: any = {};
+      if (edit?.title !== undefined) payload.title = edit.title;
+      if (edit?.description !== undefined) payload.description = edit.description;
+      if (edit?.categoryId !== undefined)
+        payload.categoryId = edit.categoryId ? parseInt(edit.categoryId, 10) : undefined;
+      if (edit?.status !== undefined) payload.status = edit.status;
+      if (edit?.priority !== undefined) payload.priority = edit.priority;
+      if (edit?.assignedToId !== undefined)
+        payload.assignedToId = edit.assignedToId ? parseInt(edit.assignedToId, 10) : null;
+
+      const res = await fetch(`/api/tickets/${ticketId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.message || "فشل حفظ التغييرات");
+      return json;
+    },
+    onSuccess: () => {
+      setSaveSuccess("تم حفظ جميع التغييرات بنجاح في قاعدة البيانات.");
+      setSaveError("");
+      queryClient.invalidateQueries({ queryKey: ["ticket", ticketId] });
+      queryClient.invalidateQueries({ queryKey: ["tickets"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["bootstrap"] });
+      if (ticketId) {
+        queryClient.invalidateQueries({ queryKey: ["ticket_messages", ticketId] });
+      }
+    },
+    onError: (err: any) => {
+      setSaveError(err.message || "حدث خطأ أثناء حفظ التغييرات. يرجى المحاولة مرة أخرى.");
+      setSaveSuccess("");
     },
   });
 
-  if (!ticketId) return null;
-
-  const handleStatusChange = (newStatus: string) => {
-    if (newStatus === "WaitingEmployee") {
-      setShowMessageToEmployeePrompt(true);
-    } else {
-      updateMutation.mutate({ status: newStatus });
-    }
-  };
-
-  const submitMessageToEmployee = () => {
-    if (!messageToEmployee.trim()) return;
-    // Post a message to the employee first, then set status to WaitingEmployee
-    fetch(`/api/tickets/${ticketId}/messages`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: messageToEmployee, isInternal: false }),
-    }).then(async (res) => {
-      if (!res.ok) throw new Error("تعذر إرسال الرسالة للموظف");
-      await updateMutation.mutateAsync({ status: "WaitingEmployee" });
-      queryClient.invalidateQueries({ queryKey: ["ticket_messages", ticketId] });
-      setShowMessageToEmployeePrompt(false);
-      setMessageToEmployee("");
-    });
-  };
+  const canSend = Boolean(ticketId && currentUser);
+  const hasChanges =
+    edit &&
+    ticket &&
+    (edit.title !== ticket.title ||
+      edit.description !== (ticket.description || "") ||
+      edit.categoryId !== String(ticket.categoryId) ||
+      edit.status !== ticket.status ||
+      edit.priority !== ticket.priority ||
+      edit.assignedToId !== (ticket.assignedToId ? String(ticket.assignedToId) : ""));
 
   const sla = ticket ? calculateSlaStatus(ticket, slaHours) : null;
 
@@ -183,17 +173,36 @@ export function TicketModal({
     Low: { label: "منخفضة (Low)", text: "text-slate-500" },
   };
 
+  const isEditableField =
+    isItOrAdmin ||
+    currentUser.canEditAnyTicket ||
+    ticket?.requesterId === currentUser.id ||
+    ticket?.assignedToId === currentUser.id;
+
+  if (!ticketId) return null;
+
+  const handleSave = () => {
+    setSaveError("");
+    setSaveSuccess("");
+    saveMutation.mutate();
+  };
+
+  const handleSendMessage = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newMessage.trim() || !canSend) return;
+    messageMutation.mutate(newMessage.trim());
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
       <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-3xl w-full border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
-        {/* Header */}
         <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
             <span className="font-mono text-xs font-bold px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
               #{ticketId}
             </span>
             <h2 className="font-bold text-base text-slate-900 dark:text-white truncate max-w-md">
-              {ticket?.title || "تحميل بيانات التذكرة..."}
+              {ticket?.title || "جاري التحميل..."}
             </h2>
           </div>
           <button
@@ -203,406 +212,336 @@ export function TicketModal({
             <X className="w-5 h-5" />
           </button>
         </div>
-
-        {/* Content */}
-        {isLoading || !ticket ? (
-          <div className="p-12 flex flex-col items-center justify-center text-slate-400 gap-3">
-            <Loader2 className="w-8 h-8 animate-spin text-brand-800" />
-            <span className="text-xs">جاري تحميل بيانات التذكرة...</span>
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          <div className="flex gap-1 border-b border-slate-100 dark:border-slate-800">
+            <button
+              onClick={() => setActiveTab("chat")}
+              className={`px-4 py-2 text-xs font-medium border-b-2 transition ${
+                activeTab === "chat"
+                  ? "border-brand-800 dark:border-brand-400 text-brand-800 dark:text-brand-400"
+                  : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+              }`}
+            >
+              محادثة التذكرة
+            </button>
+            <button
+              onClick={() => setActiveTab("history")}
+              className={`px-4 py-2 text-xs font-medium border-b-2 transition ${
+                activeTab === "history"
+                  ? "border-brand-800 dark:border-brand-400 text-brand-800 dark:text-brand-400"
+                  : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+              }`}
+            >
+              السجل والتعديلات
+            </button>
           </div>
-        ) : (
-          <div className="flex-1 overflow-y-auto p-6 space-y-6">
-            {/* Top Stats Banner: SLA & Status Controls */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* SLA Clock Card */}
-              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 flex flex-col justify-between">
-                <div className="flex items-center justify-between text-xs mb-2">
-                  <span className="font-semibold text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
-                    <Clock className="w-3.5 h-3.5" />
-                    <span>مؤشر اتفاقية SLA</span>
-                  </span>
-                  {sla?.isOverdue ? (
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400">
-                      متأخرة!
-                    </span>
-                  ) : (
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400">
-                      ضمن الوقت
-                    </span>
-                  )}
+          {activeTab === "chat" ? (
+            <>
+              <div className="bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 rounded-2xl p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5" /> تعديل بيانات التذكرة والإسناد
+                  </h3>
+                  {saveError ? (
+                    <span className="text-[10px] font-bold text-rose-600">{saveError}</span>
+                  ) : saveSuccess ? (
+                    <span className="text-[10px] font-bold text-emerald-600">{saveSuccess}</span>
+                  ) : null}
                 </div>
-                <div className="space-y-1.5">
-                  <div className="flex justify-between text-[11px] text-slate-500 dark:text-slate-400">
-                    <span>المستغرق: {sla?.effectiveElapsedHours} س</span>
-                    <span>الهدف: {sla?.targetHours} س</span>
-                  </div>
-                  <div className="w-full bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full transition-all ${sla?.isOverdue ? "bg-rose-500" : "bg-emerald-500"}`}
-                      style={{ width: `${Math.min(100, sla?.progressPercent || 0)}%` }}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div className="col-span-2 sm:col-span-3">
+                    <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">عنوان التذكرة</label>
+                    <input
+                      type="text"
+                      value={edit?.title || ""}
+                      onChange={(e) => setEdit({ ...edit!, title: e.target.value })}
+                      disabled={!isEditableField}
+                      className={`w-full text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5 focus:outline-hidden focus:ring-2 focus:ring-brand-800 text-slate-800 dark:text-slate-200 ${!isEditableField ? "bg-slate-100/50 dark:bg-slate-800/50 text-slate-400 cursor-not-allowed" : ""}`}
                     />
                   </div>
-                </div>
-              </div>
-
-              {/* Status Changer */}
-              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
-                <span className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">
-                  حالة التذكرة
-                </span>
-                <select
-                  value={ticket.status}
-                  disabled={!isItOrAdmin && !currentUser.canEditAnyTicket}
-                  onChange={(e) => handleStatusChange(e.target.value)}
-                  className={`w-full text-xs font-semibold rounded-xl px-3 py-2 border border-slate-200 dark:border-slate-700 focus:outline-hidden ${
-                    statusMap[ticket.status]?.bg || ""
-                  } ${statusMap[ticket.status]?.text || ""}`}
-                >
-                  <option value="New">جديدة (New)</option>
-                  <option value="InProgress">قيد المعالجة (In Progress)</option>
-                  <option value="WaitingEmployee">بانتظار الموظف (Waiting Employee)</option>
-                  <option value="Resolved">تم الحل (Resolved)</option>
-                  <option value="Closed">مغلقة (Closed)</option>
-                </select>
-              </div>
-
-              {/* Assignee Card */}
-              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
-                <span className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">
-                  المسند إليه
-                </span>
-                {isItOrAdmin || currentUser.canReassignTickets ? (
-                  <select
-                    value={ticket.assignedToId || ""}
-                    onChange={(e) => updateMutation.mutate({ assignedToId: e.target.value ? parseInt(e.target.value, 10) : null })}
-                    className="w-full text-xs rounded-xl px-3 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-hidden"
-                  >
-                    <option value="">غير مسندة (Unassigned)</option>
-                    {staff.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.displayName} {s.isOnLeave ? "(في إجازة)" : ""}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                    {ticket.assignedTo?.fullName || "غير مسندة بعد"}
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {/* Prompt for Message to Employee */}
-
-            {showMessageToEmployeePrompt && (
-              <div className="p-4 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 space-y-3 animate-in fade-in">
-                <span className="block text-xs font-bold text-indigo-900 dark:text-indigo-300">
-                  اكتب رسالة للموظف المسند إليه (تُرسل مع تغيير الحالة إلى "بانتظار الموظف"):
-                </span>
-                <input
-                  type="text"
-                  required
-                  placeholder="مثال: يرجى مراجعة المرفقات وإرسال التحديث... غيّر حالة التذكرة إلى بانتظار الموظف عند الانتهاء"
-                  value={messageToEmployee}
-                  onChange={(e) => setMessageToEmployee(e.target.value)}
-                  className="w-full text-xs p-2.5 rounded-xl border border-indigo-200 dark:border-indigo-700 bg-white dark:bg-slate-900"
-                />
-                <div className="flex gap-2 justify-end">
-                  <button
-                    type="button"
-                    onClick={() => setShowMessageToEmployeePrompt(false)}
-                    className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg"
-                  >
-                    إلغاء
-                  </button>
-                  <button
-                    type="button"
-                    onClick={submitMessageToEmployee}
-                    disabled={!messageToEmployee.trim()}
-                    className="px-3 py-1.5 text-xs bg-indigo-700 hover:bg-indigo-800 text-white rounded-lg font-medium"
-                  >
-                    إرسال وتغيير الحالة
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Ticket Metadata Bar */}
-            <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500 dark:text-slate-400 bg-slate-50/50 dark:bg-slate-800/30 p-3 rounded-xl border border-slate-100 dark:border-slate-800">
-              <div className="flex items-center gap-1.5">
-                <User className="w-3.5 h-3.5 text-slate-400" />
-                <span>مقدم الطلب:</span>
-                <strong className="text-slate-700 dark:text-slate-200">
-                  {ticket.requester.titlePrefix} {ticket.requester.fullName}
-                </strong>
-              </div>
-
-              {ticket.requester.department && (
-                <div className="flex items-center gap-1.5">
-                  <Building2 className="w-3.5 h-3.5 text-slate-400" />
-                  <span>القسم:</span>
-                  <strong className="text-slate-700 dark:text-slate-200">
-                    {ticket.requester.department.name}
-                  </strong>
-                </div>
-              )}
-
-              <div className="flex items-center gap-1.5">
-                <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                <span>تاريخ الإنشاء:</span>
-                <span>
-                  {new Date(ticket.createdAt).toLocaleDateString("ar-SA", {
-                    year: "numeric",
-                    month: "short",
-                    day: "numeric",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </span>
-              </div>
-
-              <div className="flex items-center gap-1.5 mr-auto">
-                <span>الأولوية:</span>
-                <span className={priorityMap[ticket.priority]?.text || ""}>
-                  {priorityMap[ticket.priority]?.label || ticket.priority}
-                </span>
-              </div>
-            </div>
-
-            {/* Ticket Description */}
-            <div className="space-y-1.5">
-              <h3 className="text-xs font-bold text-slate-700 dark:text-slate-300">وصف المشكلة</h3>
-              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 text-xs text-slate-800 dark:text-slate-200 whitespace-pre-wrap leading-relaxed">
-                {ticket.description}
-              </div>
-            </div>
-
-            {/* Rating Section (If resolved and requester) */}
-            {(ticket.status === "Resolved" || ticket.status === "Closed") && (
-              <div className="p-4 rounded-2xl bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-900/40 flex items-center justify-between">
-                <div>
-                  <div className="flex items-center gap-1.5 text-xs font-bold text-amber-900 dark:text-amber-300">
-                    <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
-                    <span>تقييم جودة الخدمة</span>
+                  <div className="col-span-2 sm:col-span-3">
+                    <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">وصف المشكلة</label>
+                    <textarea
+                      value={edit?.description || ""}
+                      onChange={(e) => setEdit({ ...edit!, description: e.target.value })}
+                      rows={3}
+                      disabled={!isEditableField}
+                      className={`w-full text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5 focus:outline-hidden focus:ring-2 focus:ring-brand-800 text-slate-800 dark:text-slate-200 ${!isEditableField ? "bg-slate-100/50 dark:bg-slate-800/50 text-slate-400 cursor-not-allowed" : ""}`}
+                    />
                   </div>
-                  {ticket.rating ? (
-                    <div className="text-xs text-slate-600 dark:text-slate-400 mt-1">
-                      حصلت هذه التذكرة على تقييم: <strong className="text-amber-600 font-bold">{ticket.rating} من 5 نجوم</strong>
-                      {ticket.ratingComment && ` - "${ticket.ratingComment}"`}
-                    </div>
-                  ) : (
-                    <span className="text-xs text-slate-500">لم يتم تقييم التذكرة بعد</span>
-                  )}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">حالة التذكرة</label>
+                    <select
+                      value={edit?.status || ticket?.status || "New"}
+                      onChange={(e) => setEdit({ ...edit!, status: e.target.value })}
+                      disabled={!isItOrAdmin}
+                      className={`w-full text-xs rounded-xl px-3 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-hidden ${statusMap[edit?.status || ticket?.status || "New"]?.bg} ${statusMap[edit?.status || ticket?.status || "New"]?.text} ${!isItOrAdmin ? "bg-slate-100/50 dark:bg-slate-800/50 cursor-not-allowed" : ""}`}
+                    >
+                      <option value="New">جديدة (New)</option>
+                      <option value="InProgress">قيد المعالجة (In Progress)</option>
+                      <option value="WaitingEmployee">بانتظار الموظف (Waiting Employee)</option>
+                      <option value="Resolved">تم الحل (Resolved)</option>
+                      <option value="Closed">مغلقة (Closed)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">الأولوية</label>
+                    <select
+                      value={edit?.priority || ticket?.priority || "Medium"}
+                      onChange={(e) => setEdit({ ...edit!, priority: e.target.value })}
+                      disabled={!isItOrAdmin}
+                      className="w-full text-xs rounded-xl px-3 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-hidden"
+                    >
+                      <option value="Low">منخفضة (Low)</option>
+                      <option value="Medium">متوسطة (Medium)</option>
+                      <option value="High">مرتفعة (High)</option>
+                      <option value="Urgent">حرجة (Urgent)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">الفئة</label>
+                    <select
+                      value={edit?.categoryId || String(ticket?.categoryId || "")}
+                      onChange={(e) => setEdit({ ...edit!, categoryId: e.target.value })}
+                      disabled={!isEditableField}
+                      className="w-full text-xs rounded-xl px-3 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-hidden"
+                    >
+                      <option value="">اختر الفئة</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">المسند إليه</label>
+                    <select
+                      value={edit?.assignedToId || ""}
+                      onChange={(e) => setEdit({ ...edit!, assignedToId: e.target.value })}
+                      disabled={!isItOrAdmin && !currentUser.canReassignTickets}
+                      className="w-full text-xs rounded-xl px-3 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-hidden"
+                    >
+                      <option value="">غير مسندة (Unassigned)</option>
+                      {staff.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.displayName} {s.isOnLeave ? " (في إجازة)" : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
-                {!ticket.rating && ticket.requesterId === currentUser.id && (
+                <div className="mt-5 flex justify-end">
                   <button
-                    onClick={() => onOpenRateModal(ticket.id)}
-                    className="px-3.5 py-1.5 text-xs font-semibold bg-amber-500 hover:bg-amber-600 text-white rounded-xl shadow-xs transition"
+                    onClick={handleSave}
+                    disabled={
+                      !hasChanges ||
+                      saveMutation.isPending ||
+                      (!isItOrAdmin && !currentUser.canEditAnyTicket && !currentUser.canReassignTickets)
+                    }
+                    className={`w-fit px-6 py-2.5 text-xs font-bold rounded-xl shadow-lg transition ${
+                      saveMutation.isPending
+                        ? "opacity-70 cursor-not-allowed"
+                        : !hasChanges
+                          ? "bg-slate-300 dark:bg-slate-700 text-slate-500"
+                          : "bg-brand-800 hover:bg-brand-900 text-white"
+                    }`}
                   >
-                    تقييم الآن
-                  </button>
-                )}
-              </div>
-            )}
-
-            {/* Tabs: Comments & Timeline */}
-            <div className="border-t border-slate-100 dark:border-slate-800 pt-4">
-              <div className="flex items-center gap-4 mb-4 border-b border-slate-100 dark:border-slate-800 pb-2">
-                <button
-                  onClick={() => setActiveTab("comments")}
-                  className={`text-xs font-bold pb-2 border-b-2 flex items-center gap-1.5 transition ${
-                    activeTab === "comments"
-                      ? "border-brand-800 text-brand-800 dark:text-brand-400"
-                      : "border-transparent text-slate-400 hover:text-slate-600"
-                  }`}
-                >
-                  <MessageSquare className="w-3.5 h-3.5" />
-                  <span>الردود والمحادثة ({ticket.comments?.length || 0})</span>
-                </button>
-                <button
-                  onClick={() => setActiveTab("history")}
-                  className={`text-xs font-bold pb-2 border-b-2 flex items-center gap-1.5 transition ${
-                    activeTab === "history"
-                      ? "border-brand-800 text-brand-800 dark:text-brand-400"
-                      : "border-transparent text-slate-400 hover:text-slate-600"
-                  }`}
-                >
-                  <History className="w-3.5 h-3.5" />
-                  <span>سجل الإجراءات ({ticket.history?.length || 0})</span>
-                </button>
-              </div>
-
-              {/* Comments Tab */}
-              {activeTab === "comments" ? (
-                <div className="space-y-4">
-                  {/* Messages list */}
-                  <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
-                    {ticket.comments?.length === 0 ? (
-                      <div className="text-center py-6 text-xs text-slate-400">لا توجد ردود بعد</div>
+                    {saveMutation.isPending ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin mr-2" /> جاري الحفظ...
+                      </>
                     ) : (
-                      ticket.comments.map((c: any) => (
+                      <>
+                        <Send className="w-4 h-4 mr-2" /> حفظ التغييرات
+                      </>
+                    )}
+                  </button>
+                </div>
+                <p className="mt-2 text-[10px] text-slate-500 dark:text-slate-400 italic">
+                  جميع التعديلات محفوظة بشكل مؤقت ولن تُعتمد حتى ضغط زر "حفظ التغييرات". إذا غادرت الصفحة دون الحفظ، تُلغى التغييرات.
+                </p>
+              </div>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between mb-1">
+                  <h3 className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                    <Send className="w-3.5 h-3.5 text-indigo-500" /> المحادثة
+                  </h3>
+                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                    ticket?.status === "Resolved" || ticket?.status === "Closed"
+                      ? "bg-slate-200 dark:bg-slate-700 text-slate-500"
+                      : "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400"
+                  }`}>
+                    {ticket?.status === "Resolved" || ticket?.status === "Closed" ? "مغلقة أمام الرسائل" : "مفتوحة"}
+                  </span>
+                </div>
+
+                <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
+                  {ticket?.messages?.length === 0 ? (
+                    <div className="text-center py-6 text-xs text-slate-400">لا توجد رسائل بعد</div>
+                  ) : (
+                    ticket.messages.map((m: any) => {
+                      const isOwn = m.userId === currentUser.id;
+                      const isStaffOnlyMsg = m.isStaffOnly;
+                      const canViewStaffOnly = isItOrAdmin;
+                      if (isStaffOnlyMsg && !canViewStaffOnly) return null;
+                      return (
                         <div
-                          key={c.id}
-                          className={`p-3.5 rounded-2xl text-xs space-y-1.5 border ${
-                            c.isInternal
-                              ? "bg-purple-50 dark:bg-purple-950/30 border-purple-200 dark:border-purple-800 text-purple-900 dark:text-purple-300"
-                              : "bg-slate-50 dark:bg-slate-800/50 border-slate-100 dark:border-slate-800 text-slate-800 dark:text-slate-200"
+                          key={m.id}
+                          className={`p-3 rounded-2xl text-xs max-w-md ${
+                            isOwn
+                              ? "bg-brand-800 text-white border border-brand-700 ml-auto"
+                              : "bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 text-slate-700 dark:text-slate-200 mr-4"
                           }`}
                         >
-                          <div className="flex items-center justify-between text-[11px] text-slate-400">
-                            <span className="font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1">
-                              {c.user.fullName}
-                              {c.isInternal && (
-                                <span className="bg-purple-200 dark:bg-purple-800 text-purple-800 dark:text-purple-200 text-[10px] px-1.5 py-0.5 rounded-md font-bold">
-                                  ملاحظة داخلية
-                                </span>
-                              )}
+                          <div className="flex items-center justify-between mb-1">
+                            <span className={`text-[10px] font-bold uppercase ${isOwn ? "text-brand-200" : "text-slate-500 dark:text-slate-400"}`}>
+                              {m.senderName || m.user?.fullName || "مستخدم"}
                             </span>
-                            <span>
-                              {new Date(c.createdAt).toLocaleDateString("ar-SA", {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
+                            <span className="text-[10px] text-slate-400 dark:text-slate-500">
+                              {new Date(m.createdAt).toLocaleTimeString("ar-SA", { hour: "2-digit", minute: "2-digit" })}
                             </span>
                           </div>
-                          <p className="whitespace-pre-wrap">{c.text}</p>
+                          {isStaffOnlyMsg && (
+                            <span className="inline-block text-[10px] bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-400 px-2 py-0.5 rounded mb-2 block font-bold border border-rose-200 dark:border-rose-800">
+                              داخلي - موظفي تقنية المعلومات فقط
+                            </span>
+                          )}
+                          <p className="whitespace-pre-wrap leading-relaxed">{m.body}</p>
                         </div>
-                      ))
+                      );
+                    })
+                  )}
+                </div>
+                <div className="p-4 rounded-2xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30">
+                  <div className="flex items-center gap-2 mb-2">
+                    {isItOrAdmin ? (
+                      <label className="text-xs text-slate-600 dark:text-slate-400 cursor-pointer select-none flex items-center gap-1.5">
+                        <input
+                          type="checkbox"
+                          checked={isStaffOnly}
+                          onChange={(e) => setIsStaffOnly(e.target.checked)}
+                          className="rounded border-slate-300 dark:border-slate-700"
+                        />
+                        <Lock className="w-3 h-3" />
+                        <span>رسالة خاصة لموظفي تقنية المعلومات فقط</span>
+                      </label>
+                    ) : (
+                      <span className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                        <Send className="w-3 h-3 text-slate-400" />
+                        <span>رسالة عامة مرئية لموظفي الدعم وصاحب التذكرة</span>
+                      </span>
                     )}
                   </div>
-
-                  {/* Add Comment Input */}
-                  <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">إضافة رد:</span>
-                      {isItOrAdmin && (
-                        <label className="flex items-center gap-1.5 text-xs text-purple-700 dark:text-purple-400 cursor-pointer select-none">
-                          <input
-                            type="checkbox"
-                            checked={isInternal}
-                            onChange={(e) => setIsInternal(e.target.checked)}
-                            className="rounded-sm border-purple-400 text-purple-700 focus:ring-purple-600"
-                          />
-                          <Lock className="w-3.5 h-3.5" />
-                          <span>ملاحظة داخلية (لفريق IT فقط)</span>
-                        </label>
-                      )}
-                    </div>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={newComment}
-                        onChange={(e) => setNewComment(e.target.value)}
-                        placeholder="اكتب ردك هنا..."
-                        className="flex-1 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5 focus:outline-hidden focus:ring-2 focus:ring-brand-800"
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" && newComment.trim() && !commentMutation.isPending) {
-                            commentMutation.mutate();
-                          }
-                        }}
-                      />
-                      <button
-                        onClick={() => commentMutation.mutate()}
-                        disabled={!newComment.trim() || commentMutation.isPending}
-                        className="bg-brand-800 hover:bg-brand-900 disabled:opacity-50 text-white px-4 py-2 rounded-xl text-xs font-medium flex items-center gap-1.5 transition"
-                      >
-                        {commentMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-                        <span>إرسال</span>
-                      </button>
-                    </div>
+                  <div className="flex items-center gap-2 text-[10px] font-bold">
+                    <span className={isStaffOnly ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}>
+                      {isStaffOnly ? "النطاق: موظفو تقنية المعلومات فقط" : "النطاق: فريق الدعم وصاحب التذكرة"}
+                    </span>
                   </div>
-
-                  {/* Conversation (TicketMessage) */}
-                  <div className="mt-6 space-y-2 pt-4 border-t border-slate-100 dark:border-t border-slate-800">
-                    <h3 className="text-xs font-bold text-slate-700 dark:text-slate-300 mb-2 flex items-center gap-1.5">
-                      <MessageSquare className="w-3.5 h-3.5 text-indigo-500" /> محادثة التذكرة
-                    </h3>
-                    <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
-                      {messagesQuery.data?.length === 0 ? (
-                        <div className="text-center py-4 text-xs text-slate-400">لا توجد رسائل بعد</div>
+                  <form onSubmit={handleSendMessage} className="mt-3 flex gap-2">
+                    <input
+                      type="text"
+                      value={newMessage}
+                      onChange={(e) => setNewMessage(e.target.value)}
+                      placeholder={isStaffOnly ? "اكتب رسالتك الداخلية للموظفين فقط..." : "اكتب رسالتك في المحادثة..."}
+                      disabled={!canSend || !currentUser || ticket?.status === "Resolved" || ticket?.status === "Closed"}
+                      className={`flex-1 text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5 focus:outline-hidden focus:ring-2 focus:ring-brand-800 text-slate-800 dark:text-slate-200 ${
+                        !canSend || ticket?.status === "Resolved" || ticket?.status === "Closed"
+                          ? "opacity-60 cursor-not-allowed"
+                          : ""
+                      }`}
+                    />
+                    <button
+                      type="submit"
+                      disabled={!newMessage.trim() || messageMutation.isPending || !canSend || ticket?.status === "Resolved" || ticket?.status === "Closed"}
+                      className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-2 rounded-xl text-xs font-medium flex items-center gap-1.5 transition"
+                    >
+                      {messageMutation.isPending ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
                       ) : (
-                        messagesQuery.data.map((m: any) => (
-                          <div
-                            key={m.id}
-                            className={`p-3 rounded-2xl text-xs ${
-                              m.isFromRequester
-                                ? "bg-blue-50 dark:bg-blue-900/30 border-b border-b-blue-200 dark:border-b-blue-900 ml-4"
-                                : "bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 mr-4"
-                            }`}
-                          >
-                            <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1">
-                              <span className="font-semibold">{m.senderName || m.user?.fullName}</span>
-                              <span>
-                                {new Date(m.createdAt).toLocaleDateString("ar-SA", {
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                })}
-                              </span>
-                            </div>
-                            <p className="whitespace-pre-wrap">{m.body}</p>
-                          </div>
-                        ))
+                        <Send className="w-3.5 h-3.5" />
                       )}
-                    </div>
-                    <div className="flex gap-2 mt-2">
-                      <input
-                        type="text"
-                        value={newMessage}
-                        onChange={(e) => setNewMessage(e.target.value)}
-                        placeholder="اكتب رسالة للمحادثة..."
-                        className="flex-1 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
-                        onKeyDown={(e) => {
-                          if (
-                            e.key === "Enter" &&
-                            newMessage.trim() &&
-                            !messageMutation.isPending
-                          ) {
-                            messageMutation.mutate(newMessage);
-                          }
-                        }}
-                      />
-                      <button
-                        onClick={() => messageMutation.mutate(newMessage)}
-                        disabled={!newMessage.trim() || messageMutation.isPending}
-                        className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-4 py-2 rounded-xl text-xs font-medium flex items-center gap-1.5 transition"
-                      >
-                        {messageMutation.isPending ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <Send className="w-3.5 h-3.5" />
-                        )}
-                        <span>إرسال</span>
-                      </button>
+                      <span>إرسال</span>
+                    </button>
+                  </form>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="space-y-2.5 max-h-[400px] overflow-y-auto pr-1">
+              {ticket?.history?.map((h: any) => (
+                <div key={h.id} className="flex items-start gap-2.5 text-xs">
+                  <div className="w-2 h-2 rounded-full bg-brand-800 mt-1.5 shrink-0" />
+                  <div className="flex-1">
+                    <span className="font-semibold text-slate-800 dark:text-slate-200">{h.action}</span>
+                    <div className="text-[10px] text-slate-400 mt-0.5">
+                      بواسطة: {h.byUser?.fullName || "النظام"} •{" "}
+                      {new Date(h.at).toLocaleDateString("ar-SA", {
+                        year: "numeric",
+                        month: "short",
+                        day: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
                     </div>
                   </div>
                 </div>
-              ) : (
-                /* History Timeline */
-                <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
-                  {ticket.history?.map((h: any) => (
-                    <div key={h.id} className="flex items-start gap-2.5 text-xs">
-                      <div className="w-2 h-2 rounded-full bg-brand-800 mt-1.5 shrink-0" />
-                      <div className="flex-1">
-                        <span className="font-semibold text-slate-800 dark:text-slate-200">{h.action}</span>
-                        <div className="text-[10px] text-slate-400 mt-0.5">
-                          بواسطة: {h.byUser?.fullName || "النظام"} •{" "}
-                          {new Date(h.at).toLocaleDateString("ar-SA", {
-                            year: "numeric",
-                            month: "short",
-                            day: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+              ))}
+              {ticket?.history?.length === 0 && (
+                <div className="text-center py-6 text-xs text-slate-400">لا توجد سجلات تعديل بعد</div>
               )}
             </div>
+          )}
+        </div>
+
+        {ticket && (
+          <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500 dark:text-slate-400 bg-slate-50/50 dark:bg-slate-800/30 p-3 rounded-xl border border-slate-100 dark:border-slate-800 shrink-0">
+            <div className="flex items-center gap-1.5">
+              <User className="w-3.5 h-3.5 text-slate-400" />
+              <span>مقدم الطلب:</span>
+              <strong className="text-slate-700 dark:text-slate-200">
+                {ticket.requester.titlePrefix} {ticket.requester.fullName}
+              </strong>
+            </div>
+            {ticket.requester.department && (
+              <div className="flex items-center gap-1.5">
+                <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                <span>القسم:</span>
+                <strong className="text-slate-700 dark:text-slate-200">{ticket.requester.department.name}</strong>
+              </div>
+            )}
+            <div className="flex items-center gap-1.5">
+              <Calendar className="w-3.5 h-3.5 text-slate-400" />
+              <span>التاريخ:</span>
+              <span>
+                {new Date(ticket.createdAt).toLocaleDateString("ar-SA", {
+                  year: "numeric",
+                  month: "short",
+                  day: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 mr-auto">
+              <span>الأولوية:</span>
+              <span className={priorityMap[ticket.priority]?.text || ""}>
+                {priorityMap[ticket.priority]?.label || ticket.priority}
+              </span>
+            </div>
+            {sla && !["Resolved", "Closed"].includes(ticket.status) && (
+              <span className={`text-[11px] font-bold ${sla.isOverdue ? "text-rose-600" : "text-slate-500"} flex items-center gap-1`}>
+                {sla.isOverdue ? (
+                  <>
+                    <AlertTriangle className="w-3 h-3 animate-bounce" /> متأخرة!
+                  </>
+                ) : (
+                  <>
+                    <Clock className="w-3 h-3 text-slate-400" /> متبقي {sla.remainingHours} س
+                  </>
+                )}
+              </span>
+            )}
           </div>
         )}
       </div>
     </div>
   );
 }
+
+export default TicketModal;

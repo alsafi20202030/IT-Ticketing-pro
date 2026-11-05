@@ -155,13 +155,13 @@ model Ticket {
 }
 
 model TicketComment {
+  isInternal Boolean @default(false)
   id             Int          @id @default(autoincrement())
   ticketId       Int
   ticket         Ticket       @relation(fields: [ticketId], references: [id], onDelete: Cascade)
   userId         Int
   user           HelpdeskUser @relation(fields: [userId], references: [id], onDelete: Cascade)
   text           String
-  isInternal     Boolean      @default(false)
   attachmentPath String?
   createdAt      DateTime     @default(now())
 }

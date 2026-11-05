@@ -13,7 +13,6 @@ import {
   LogOut,
   Headphones,
   CheckCircle2,
-  MessageCircle,
   Calendar,
   ArrowRight,
   Shield,
@@ -71,11 +70,6 @@ export function Sidebar({
             id: "calendar",
             label: "تقويم موظفي IT",
             icon: Calendar,
-          },
-          {
-            id: "chat",
-            label: "المحادثات",
-            icon: MessageCircle,
           },
           {
             id: "analytics",

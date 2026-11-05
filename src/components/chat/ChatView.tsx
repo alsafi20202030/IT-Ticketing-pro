@@ -68,21 +68,7 @@ export function ChatView({ currentUser }: ChatViewProps) {
       const data = await res.json();
       const conversations: Conversation[] = data.conversations || [];
 
-      let targetConversation = conversations.find((c) => !c.ticketId);
-
-      if (!targetConversation) {
-        const createRes = await fetch("/api/chat/conversations", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            title: "المحادثة العامة",
-            ticketId: null,
-            participantIds: [],
-          }),
-        });
-        if (!createRes.ok) throw new Error("تعذر إنشاء المحادثة");
-        targetConversation = (await createRes.json()) as Conversation;
-      }
+      let targetConversation = conversations.find((c) => c.ticketId !== null);
 
       if (targetConversation) {
         setConversation(targetConversation);

@@ -5,145 +5,94 @@ import { requireAuth } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
-  const auth = await requireAuth(["Admin", "IT"]);
+  const auth = await requireAuth(["Admin", "IT", "User"]);
   if (auth.error || !auth.user) {
     return NextResponse.json({ message: auth.error }, { status: auth.status });
   }
 
   const user = auth.user;
   const isItOrAdmin = user.role === "IT" || user.role === "Admin";
+
   const { searchParams } = new URL(req.url);
+  const requestedUserId = searchParams.get("userId");
+  const search = (searchParams.get("search") || "").trim();
 
-  const userIdFilter = searchParams.get("userId");
-  const statusFilter = searchParams.get("status");
-  const priorityFilter = searchParams.get("priority");
-  const startDate = searchParams.get("startDate");
-  const endDate = searchParams.get("endDate");
-
-  const where: any = {};
-
+  // الموظف العادي يرى إحصائيات نفسه فقط
+  let targetUserIds: number[] = [];
   if (!isItOrAdmin) {
-    where.userId = user.id;
-  } else if (userIdFilter) {
-    where.userId = parseInt(userIdFilter, 10);
+    targetUserIds = [user.id];
+  } else if (requestedUserId) {
+    const id = parseInt(requestedUserId, 10);
+    if (!isNaN(id)) targetUserIds = [id];
   }
 
-  if (statusFilter) where.status = statusFilter;
-  if (priorityFilter) where.priority = priorityFilter;
-
-  if (startDate || endDate) {
-    where.createdAt = {};
-    if (startDate) where.createdAt.gte = new Date(startDate);
-    if (endDate) where.createdAt.lte = new Date(endDate);
+  // قائمة الموظفين المراد عرض إحصائياتهم
+  const employeesWhere: any = {
+    isActive: true,
+    isApproved: true,
+  };
+  if (search) {
+    employeesWhere.fullName = { contains: search };
+  }
+  if (targetUserIds.length > 0) {
+    employeesWhere.id = { in: targetUserIds };
   }
 
-  const [totalTasks, tasksByStatus, tasksByPriority, tasksPerEmployee, completedPerEmployee, recentTasks, overdueTasks] =
-    await Promise.all([
-      prisma.employeeTask.count({ where }),
-      prisma.employeeTask.groupBy({
-        by: ["status"],
-        where,
-        _count: { id: true },
-      }),
-      prisma.employeeTask.groupBy({
-        by: ["taskType"],
-        where,
-        _count: { id: true },
-      }),
-      prisma.employeeTask.findMany({
-        where,
-        include: {
-          user: { select: { id: true, fullName: true, role: true } },
-        },
-        orderBy: { createdAt: "desc" },
-      }),
-      prisma.employeeTask.groupBy({
-        by: ["userId"],
-        where: { ...where, status: "Completed" },
-        _count: { id: true },
-      }),
-      prisma.employeeTask.findMany({
-        where,
-        include: {
-          user: { select: { id: true, fullName: true, role: true } },
-        },
-        orderBy: { createdAt: "desc" },
-        take: 50,
-      }),
-      prisma.employeeTask.count({
-        where: {
-          ...where,
-          status: { not: "Completed" },
-          workDate: { lt: new Date() },
-        },
-      }),
-    ]);
-
-  // Calculate average completion time for completed tasks
-  const completedTasks = await prisma.employeeTask.findMany({
-    where: { ...where, status: "Completed", completedAt: { not: null } },
-    select: { createdAt: true, completedAt: true, userId: true },
+  const employees = await prisma.helpdeskUser.findMany({
+    where: employeesWhere,
+    select: {
+      id: true,
+      fullName: true,
+      role: true,
+      departmentId: true,
+      department: { select: { name: true } },
+    },
+    orderBy: { fullName: "asc" },
   });
 
-  let totalDurationMs = 0;
-  for (const t of completedTasks) {
-    if (t.createdAt && t.completedAt) {
-      totalDurationMs += new Date(t.completedAt).getTime() - new Date(t.createdAt).getTime();
-    }
-  }
-  const averageDurationHours = completedTasks.length > 0 ? totalDurationMs / completedTasks.length / (1000 * 60 * 60) : 0;
+  const ids = employees.map((e) => e.id);
 
-  const completedCount = tasksByStatus.find((t) => t.status === "Completed")?._count.id || 0;
-  const completionRate = totalTasks > 0 ? Math.round((completedCount / totalTasks) * 100) : 0;
+  // مهام هؤلاء الموظفين من قاعدة البيانات الفعلية
+  const tasks = await prisma.employeeTask.findMany({
+    where: { userId: { in: ids.length ? ids : [-1] } },
+    select: { id: true, userId: true, status: true, workDate: true },
+  });
 
-  // Build per-employee stats
-  const employeeStats = tasksPerEmployee.reduce((acc: any, t: any) => {
-    const empId = t.userId;
-    if (!acc[empId]) {
-      acc[empId] = {
-        userId: empId,
-        fullName: t.user?.fullName || "غير معروف",
-        role: t.user?.role || "User",
-        total: 0,
-        completed: 0,
-      };
-    }
-    acc[empId].total++;
-    if (t.status === "Completed") acc[empId].completed++;
-    return acc;
-  }, {});
+  const now = new Date();
 
-  // Add completed counts from groupBy
-  for (const c of completedPerEmployee) {
-    if (employeeStats[c.userId]) {
-      employeeStats[c.userId].completed = c._count.id;
-    }
-  }
+  const employeesStats = employees.map((e) => {
+    const et = tasks.filter((t) => t.userId === e.id);
+    const completed = et.filter((t) => t.status === "Completed").length;
+    const pending = et.filter((t) => t.status !== "Completed").length;
+    const overdue = et.filter((t) => t.status !== "Completed" && new Date(t.workDate) < now).length;
+    return {
+      id: e.id,
+      fullName: e.fullName,
+      role: e.role,
+      department: e.department?.name || null,
+      totalTasks: et.length,
+      completedTasks: completed,
+      pendingTasks: pending,
+      overdueTasks: overdue,
+      completionRate: et.length ? Math.round((completed / et.length) * 100) : 0,
+    };
+  });
 
-  const employeesList = Object.values(employeeStats);
+  const totalTasks = tasks.length;
+  const totalCompleted = tasks.filter((t) => t.status === "Completed").length;
+  const totalPending = totalTasks - totalCompleted;
+  const totalOverdue = tasks.filter((t) => t.status !== "Completed" && new Date(t.workDate) < now).length;
 
   return NextResponse.json({
+    employees: employeesStats,
     summary: {
-      total: totalTasks,
-      pending: tasksByStatus.find((t) => t.status === "Pending")?._count.id || 0,
-      completed: completedCount,
-      overdue: overdueTasks,
-      completionRate,
-      averageDurationHours: Math.round(averageDurationHours * 10) / 10,
+      totalTasks,
+      totalCompleted,
+      totalPending,
+      totalOverdue,
     },
-    byStatus: tasksByStatus.map((t) => ({ status: t.status, count: t._count.id })),
-    byPriority: tasksByPriority.map((t) => ({ type: t.taskType, count: t._count.id })),
-    employees: employeesList,
-    recentTasks: recentTasks.map((t: any) => ({
-      id: t.id,
-      title: t.title,
-      status: t.status,
-      taskType: t.taskType,
-      userId: t.userId,
-      userName: t.user?.fullName || "غير معروف",
-      workDate: t.workDate,
-      completedAt: t.completedAt,
-      createdAt: t.createdAt,
-    })),
+    myId: user.id,
+    isItOrAdmin,
+    canViewAll: isItOrAdmin || user.canViewAllTickets,
   });
 }
