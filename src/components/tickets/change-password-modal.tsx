@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { X, KeyRound, AlertCircle, Loader2 } from "lucide-react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 interface ChangePasswordModalProps {
   isOpen: boolean;
@@ -11,6 +11,7 @@ interface ChangePasswordModalProps {
 }
 
 export function ChangePasswordModal({ isOpen, onClose, mustChange }: ChangePasswordModalProps) {
+  const queryClient = useQueryClient();
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -32,9 +33,10 @@ export function ChangePasswordModal({ isOpen, onClose, mustChange }: ChangePassw
     },
     onSuccess: () => {
       setSuccess("تم تغيير كلمة المرور بنجاح!");
+      queryClient.invalidateQueries({ queryKey: ["bootstrap"] });
       setTimeout(() => {
         onClose();
-      }, 1500);
+      }, 500);
     },
     onError: (err: any) => {
       setError(err.message);
